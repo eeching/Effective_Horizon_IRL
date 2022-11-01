@@ -25,7 +25,7 @@ def main(grid_size, discount):
     """
 
     wind = 0.3
-    trajectory_length = 3*grid_size
+    trajectory_length = 3*grid_size #30
 
     gw = gridworld.Gridworld(grid_size, wind, discount)
 
