@@ -43,7 +43,7 @@ class ObjectworldRandom(GridworldRandom):
     Objectworld MDP.
     """
 
-    def __init__(self, grid_size, n_objects, n_colours, wind, discount, V=False, goal_pos=None):
+    def __init__(self, grid_size, n_objects, n_colours, wind, discount, V=False, goal_pos=None, seed=None):
         """
         grid_size: Grid size. int.
         n_objects: Number of objects in the world. int.
@@ -53,7 +53,7 @@ class ObjectworldRandom(GridworldRandom):
         -> Objectworld
         """
 
-        super().__init__(grid_size, wind, discount, goal_pos=goal_pos)
+        super().__init__(grid_size, wind, discount, goal_pos=goal_pos, seed=seed)
 
         self.n_objects = n_objects
         self.n_colours = n_colours

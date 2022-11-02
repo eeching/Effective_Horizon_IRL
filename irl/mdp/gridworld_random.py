@@ -365,7 +365,7 @@ class GridworldRandom(object):
     def evaluate_learnt_reward(self, reward, discount, n_states=None, n_actions=None, transition_prob=None):
 
         if n_states is None:
-            n_states, n_actions, transition_prob  = self.n_states, self.n_actions, transition_prob = self.transition_probability
+            n_states, n_actions, transition_prob  = self.n_states, self.n_actions, self.transition_probability
 
         value = optimal_value(n_states,
                               n_actions,

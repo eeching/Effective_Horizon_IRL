@@ -9,35 +9,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import irl.partial_expert_lp as linear_irl
-import irl.mdp.gridworld_random as gridworld
+import irl.mdp.objectworld_random as objectworld
 import pdb
 import pickle
 import random
-
-# use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
-def batch_test(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
-    wind = 0.1
-    gamma_list = [(i+1)/num_gamma for i in range(num_gamma-1)] + [0.99]
-    result = np.zeros((n_mdp, num_gamma))
-
-    for i in range(n_mdp):
-        gw = gridworld.GridworldRandom(grid_size, wind, gt_discount)
-        expert_policy = gw.policy
-        expert_idx = int(gw.n_states * expert_fraction)
-        m_expert = gw.generate_expert_demonstrations(expert_idx)
-
-        for j, gamma in enumerate(gamma_list):
-            # run lp irl
-            _, _, policy = lp_irl(gw, m_expert, gamma)
-            diff = gw.n_states - np.sum(np.equal(policy, expert_policy))
-            result[i][j] = diff
-            print(f"MDP {i}, gamma {gamma}, error {diff}")
-
-        with open(f'./batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
-            pickle.dump({"gamma": gamma_list, "error": result, "n_mdp": i+1}, fp)
-
-    print(result)
-    plot_batch_error_curve(expert_fraction, gamma_list=gamma_list, error=result, batch=n_mdp)
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
 def test(grid_size, gt_discount, expert_fraction):
@@ -51,7 +26,8 @@ def test(grid_size, gt_discount, expert_fraction):
     """
 
     # construct the env and get expert demonstrations.
-    gw = gridworld.ObjectworldRandom(grid_size, 15, 5, 0.1, 0.99, V=True, seed=0)
+    wind = 0.1
+    gw = objectworld.ObjectworldRandom(grid_size, 15, 5, wind, gt_discount, seed=0, V=True)
     ground_r = np.array([gw.reward(s) for s in range(gw.n_states)])
     expert_policy = gw.policy
     expert_idx = int(gw.n_states * expert_fraction)
@@ -90,14 +66,40 @@ def test(grid_size, gt_discount, expert_fraction):
         im3 = ax3.pcolor(learned_V.reshape((grid_size, grid_size)))
         plt.colorbar(im3, ax=ax3)
         ax3.set_title(f"Gamma = {gamma}", fontsize='small')
-    plt.savefig(f"expert_{expert_fraction}_V_R.jpg")
+    plt.savefig(f"./objectworld_lp/single_mdp/expert_{expert_fraction}_V_R.jpg")
     plt.show()
     gamma_list.reverse()
     result.reverse()
     print(result)
-    with open(f'expert_{expert_fraction}.p', 'wb') as fp:
+    with open(f'./objectworld_lp/single_mdp/expert_{expert_fraction}.p', 'wb') as fp:
         pickle.dump({"gamma": gamma_list, "error": result}, fp)
     plot_error_curve(expert_fraction, gamma_list=gamma_list, error=result)
+
+
+# use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
+def batch_test(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
+    wind = 0.1
+    gamma_list = [(i+1)/num_gamma for i in range(num_gamma-1)] + [0.99]
+    result = np.zeros((n_mdp, num_gamma))
+
+    for i in range(n_mdp):
+        gw = objectworld.ObjectworldRandom(grid_size, 15, 5, wind, gt_discount, V=True)
+        expert_policy = gw.policy
+        expert_idx = int(gw.n_states * expert_fraction)
+        m_expert = gw.generate_expert_demonstrations(expert_idx)
+
+        for j, gamma in enumerate(gamma_list):
+            # run lp irl
+            _, _, policy = lp_irl(gw, m_expert, gamma)
+            diff = gw.n_states - np.sum(np.equal(policy, expert_policy))
+            result[i][j] = diff
+            print(f"MDP {i}, gamma {gamma}, error {diff}")
+
+        with open(f'./batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+            pickle.dump({"gamma": gamma_list, "error": result, "n_mdp": i+1}, fp)
+
+    print(result)
+    plot_batch_error_curve(expert_fraction, gamma_list=gamma_list, error=result, batch=n_mdp)
 
 # use a fraction of the given expert demonstration, choose gamma using the validation set, evaluate using the full expert
 # (0.8, 0.2) training and validating splits
@@ -108,7 +110,7 @@ def cross_validate(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
     gt_error, expert_error, validate_error = np.zeros((n_mdp, num_gamma)), np.zeros((n_mdp, num_gamma)), np.zeros((n_mdp, num_gamma))
 
     for i in range(n_mdp):
-        gw = gridworld.GridworldRandom(grid_size, wind, gt_discount)
+        gw = objectworld.ObjectworldRandom(grid_size, 15, 5, wind, gt_discount, V=True)
         expert_policy = gw.policy
         expert_idx = int(gw.n_states * expert_fraction)
         m_expert, training, validation = gw.generate_expert_demonstrations(expert_idx, cross_validate=0.8)
@@ -124,7 +126,7 @@ def cross_validate(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
             validate_error[i][j] = val_diff
             print(f"MDP {i}, gamma {gamma}, val error {val_diff}, expert_error {expert_diff}, gt_error {gt_diff}")
 
-        with open(f'./cross_validate/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+        with open(f'./objectworld_lp/cross_validate/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
             pickle.dump(
                 {"gamma": gamma_list, "gt_error": gt_error, "val_error": validate_error, "expert_error": expert_error, "m_expert": expert_idx},
                 fp)
@@ -153,7 +155,7 @@ def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None
     ax.set_ylabel('Error Count', fontsize="medium")
     ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
     fig.tight_layout()
-    plt.savefig(f"expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./objectworld_lp/single_mdp/expert_{expert_fraction}_error_curve.jpg")
     # plt.show()
 
 
@@ -175,7 +177,7 @@ def plot_batch_error_curve(expert_fraction, filename=None, gamma_list=None, erro
     ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
     fig.tight_layout()
 
-    plt.savefig(f"./batch/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./objectworld_lp/batch/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
 
 def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_list=None, gt_error=None, val_error=None, expert_error=None, batch=0):
 
@@ -210,7 +212,7 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
     ax.set_title('Percentage of Error for different Gammas')
     ax.legend(loc='lower right')
     # fig.tight_layout()
-    plt.savefig(f"./cross_validate/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./objectworld_lp/cross_validate/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
 
     # plt.show()
 
@@ -218,6 +220,6 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
-
-    batch_test(10, 0.99, 1, 20, 12)
+    test(10, 0.99, 0.5)
+    # batch_test(10, 0.99, 1, 20, 12)
     # cross_validate(10, 0.99, 0.2, 20, 12)
