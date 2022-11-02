@@ -222,5 +222,5 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
-    batch_test(10, 0.99, 0.25, 20, 20)
-    cross_validate(10, 0.99, 0.2, 20, 20)
+    batch_test(10, 0.99, 1, 20, 12)
+    # cross_validate(10, 0.99, 0.2, 20, 12)
