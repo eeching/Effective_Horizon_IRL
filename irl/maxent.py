@@ -92,7 +92,7 @@ def find_feature_expectations(feature_matrix, trajectories):
     feature_expectations = np.zeros(feature_matrix.shape[1])
 
     for trajectory in trajectories:
-        for state, _, _ in trajectory:
+        for state, _ in trajectory:
             feature_expectations += feature_matrix[state]
 
     feature_expectations /= trajectories.shape[0]

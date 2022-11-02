@@ -9,6 +9,7 @@ import numpy as np
 import numpy.random as rn
 from irl.value_iteration import optimal_value, find_policy
 import pdb
+import random
 
 class GridworldRandom(object):
     """
@@ -264,8 +265,7 @@ class GridworldRandom(object):
             return 0
         return 1
 
-    def generate_trajectories(self, n_trajectories, trajectory_length, policy,
-                                    random_start=False):
+    def generate_trajectories(self, n_states, trajectory_length):
         """
         Generate n_trajectories trajectories with length trajectory_length,
         following the given policy.
@@ -277,21 +277,23 @@ class GridworldRandom(object):
         -> [[(state int, action int, reward float)]]
         """
 
+        expert_m_itr = iter([int(x*n_states)for x in [0.08, 0.1, 0.2, 0.25, 0.4, 0.5, 0.6, 0.75, 0.8, 1]])
+        curr_expert_m = next(expert_m_itr)
+        uncovered_states = set(np.arange(n_states))
+        state_occupancy_list = []
         trajectories = []
-        for _ in range(n_trajectories):
-            if random_start:
-                sx, sy = rn.randint(self.grid_size), rn.randint(self.grid_size)
-            else:
-                sx, sy = 0, 0
+        cached_traj_idx = {}
+        cached_states_sets = {}
 
+        num_covered = n_states - len(uncovered_states)
+        while num_covered < n_states:
+            print(f"{len(trajectories)} trajs and {num_covered} states")
+            state_int = random.sample(uncovered_states, 1)[0]
             trajectory = []
             for _ in range(trajectory_length):
-                if rn.random() < self.wind:
-                    action = self.actions[rn.randint(0, 4)]
-                else:
-                    # Follow the given policy.
-                    action = self.actions[policy(self.point_to_int((sx, sy)))]
 
+                action = self.actions[self.policy[state_int]]
+                sx, sy = self.int_to_point(state_int)
                 if (0 <= sx + action[0] < self.grid_size and
                         0 <= sy + action[1] < self.grid_size):
                     next_sx = sx + action[0]
@@ -300,18 +302,23 @@ class GridworldRandom(object):
                     next_sx = sx
                     next_sy = sy
 
-                state_int = self.point_to_int((sx, sy))
                 action_int = self.actions.index(action)
-                next_state_int = self.point_to_int((next_sx, next_sy))
-                reward = self.reward(next_state_int)
-                trajectory.append((state_int, action_int, reward))
-
-                sx = next_sx
-                sy = next_sy
-
+                if state_int in uncovered_states:
+                    uncovered_states.remove(state_int)
+                trajectory.append((state_int, action_int))
+                state_int = self.point_to_int((next_sx, next_sy))
+            num_covered = n_states - len(uncovered_states)
+            state_occupancy_list.append(num_covered)
             trajectories.append(trajectory)
+            if num_covered >= curr_expert_m:
+                cached_traj_idx[curr_expert_m] = len(trajectories) - 1
+                cached_states_sets[curr_expert_m] = set(np.arange(n_states)) - uncovered_states
+                try:
+                    curr_expert_m = next(expert_m_itr)
+                except Exception:
+                    pass
 
-        return np.array(trajectories)
+        return np.array(trajectories), cached_traj_idx, cached_states_sets, state_occupancy_list
 
     def generate_expert_demonstrations(self, m_expert, cross_validate=None):
         """
@@ -386,16 +393,18 @@ class GridworldRandom(object):
                     break
         return result
 
-    def evaluate_learnt_reward(self, reward, discount):
-        value = optimal_value(self.n_states,
-                              self.n_actions,
-                              self.transition_probability,
+    def evaluate_learnt_reward(self, reward, discount, n_states=None, n_actions=None, transition_prob=None):
+
+        if n_states is None:
+            n_states, n_actions, transition_prob  = self.n_states, self.n_actions, transition_prob = self.transition_probability
+
+        value = optimal_value(n_states,
+                              n_actions,
+                              transition_prob,
                               reward,
                               discount)
 
-        policy = find_policy(self.n_states, self.n_actions, self.transition_probability,
-                                  reward, discount,
-                                  threshold=1e-2, v=None, stochastic=False)
+        policy = find_policy(n_states, n_actions, transition_prob, reward, discount, threshold=1e-2, v=value, stochastic=False)
 
         return value, policy
 
