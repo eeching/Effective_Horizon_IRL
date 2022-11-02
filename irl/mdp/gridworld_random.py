@@ -18,7 +18,7 @@ class GridworldRandom(object):
     3/ Random Obstacles
     """
 
-    def __init__(self, grid_size, wind, discount, goal_pos=None, seed=None):
+    def __init__(self, grid_size, wind, discount, goal_pos=None, seed=None, V=False):
         """
         grid_size: Grid size. int.
         wind: Chance of moving randomly. float.
@@ -46,13 +46,14 @@ class GridworldRandom(object):
                for k in range(self.n_states)]
               for j in range(self.n_actions)]
              for i in range(self.n_states)])
-        self.opt_v = optimal_value(self.n_states,
-                              self.n_actions,
-                              self.transition_probability,
-                              [self.reward(s) for s in range(self.n_states)],
-                              self.discount)
+        if V:
+            self.opt_v = optimal_value(self.n_states,
+                                  self.n_actions,
+                                  self.transition_probability,
+                                  [self.reward(s) for s in range(self.n_states)],
+                                  self.discount)
 
-        print("finished computing V-value")
+            print("finished computing V-value")
         self.policy = find_policy(self.n_states, self.n_actions, self.transition_probability, [self.reward(s) for s in range(self.n_states)], self.discount,
                     threshold=1e-2, v=None, stochastic=False)
         print("finished computing the expert policy")
@@ -312,7 +313,7 @@ class GridworldRandom(object):
 
         return np.array(trajectories)
 
-    def generate_expert_demonstrations(self, m_expert, policy=None):
+    def generate_expert_demonstrations(self, m_expert, cross_validate=None):
         """
         Generate the expert demonstrations of n states
         following the given policy.
@@ -320,8 +321,15 @@ class GridworldRandom(object):
         random_start: Whether to start randomly (default False). bool.
         -> [[(state int, action int, reward float)]]
         """
-        states = np.sort(rn.choice(range(self.n_states), m_expert, replace=False)).reshape(m_expert, 1)
-        return states.reshape(m_expert)
+        m_states = rn.choice(range(self.n_states), m_expert, replace=False)
+        if cross_validate is None:
+            return np.sort(m_states).reshape(m_expert)
+        else:
+            k_training = int(m_expert*cross_validate)
+            training = np.sort(m_states[: k_training]).reshape(k_training)
+            validate = np.sort(m_states[k_training:]).reshape(m_expert-k_training)
+            return m_states, training, validate
+
         # if policy is None:
         #     policy = self.policy
         # actions = np.array([policy[s] for s in states]).reshape(m_expert, 1)

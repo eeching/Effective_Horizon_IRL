@@ -15,10 +15,10 @@ import pickle
 import random
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
-def batch_test(grid_size, gt_discount, expert_fraction, n_mdp):
+def batch_test(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
     wind = 0.1
-    gamma_list = [i/20 for i in range(20)]
-    result = [0] * len(gamma_list)
+    gamma_list = [(i+1)/num_gamma for i in range(num_gamma-1)] + [0.99]
+    result = np.zeros((n_mdp, num_gamma))
 
     for i in range(n_mdp):
         gw = gridworld.GridworldRandom(grid_size, wind, gt_discount)
@@ -30,14 +30,14 @@ def batch_test(grid_size, gt_discount, expert_fraction, n_mdp):
             # run lp irl
             _, _, policy = lp_irl(gw, m_expert, gamma)
             diff = gw.n_states - np.sum(np.equal(policy, expert_policy))
-            result[j] += diff
+            result[i][j] = diff
             print(f"MDP {i}, gamma {gamma}, error {diff}")
 
-    result[:] = [x / n_mdp for x in result]
+        with open(f'./batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+            pickle.dump({"gamma": gamma_list, "error": result, "n_mdp": i+1}, fp)
+
     print(result)
-    with open(f'./batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
-        pickle.dump({"gamma": gamma_list, "error": result}, fp, protocol=pickle.HIGHEST_PROTOCOL)
-    plot_error_curve(expert_fraction, gamma_list=gamma_list, error=result, batch=n_mdp)
+    plot_batch_error_curve(expert_fraction, gamma_list=gamma_list, error=result, batch=n_mdp)
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
 def test(grid_size, gt_discount, expert_fraction):
@@ -52,7 +52,7 @@ def test(grid_size, gt_discount, expert_fraction):
 
     # construct the env and get expert demonstrations.
     wind = 0.1
-    gw = gridworld.GridworldRandom(grid_size, wind, gt_discount, seed=0)
+    gw = gridworld.GridworldRandom(grid_size, wind, gt_discount, seed=0, V=True)
     ground_r = np.array([gw.reward(s) for s in range(gw.n_states)])
     expert_policy = gw.policy
     expert_idx = int(gw.n_states * expert_fraction)
@@ -100,28 +100,22 @@ def test(grid_size, gt_discount, expert_fraction):
     result.reverse()
     print(result)
     with open(f'expert_{expert_fraction}.p', 'wb') as fp:
-        pickle.dump({"gamma": gamma_list, "error": result}, fp, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump({"gamma": gamma_list, "error": result}, fp)
     plot_error_curve(expert_fraction, gamma_list=gamma_list, error=result)
 
 # use a fraction of the given expert demonstration, choose gamma using the validation set, evaluate using the full expert
 # (0.8, 0.2) training and validating splits
-def cross_validate(grid_size, gt_discount, expert_fraction, n_mdp):
+def cross_validate(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
 
     wind = 0.1
-    gamma_list = [i / 20 for i in range(1, 20)]
-    gt_error, expert_error, validate_error = [0] * len(gamma_list), [0] * len(gamma_list), [0] * len(gamma_list)
+    gamma_list = [(i + 1) / num_gamma for i in range(num_gamma - 1)] + [0.99]
+    gt_error, expert_error, validate_error = np.zeros((n_mdp, num_gamma)), np.zeros((n_mdp, num_gamma)), np.zeros((n_mdp, num_gamma))
 
-    for _ in range(n_mdp):
+    for i in range(n_mdp):
         gw = gridworld.GridworldRandom(grid_size, wind, gt_discount)
         expert_policy = gw.policy
         expert_idx = int(gw.n_states * expert_fraction)
-        m_expert = gw.generate_expert_demonstrations(expert_idx).tolist()
-        training = set(random.sample(m_expert, int(expert_idx*0.8)))
-        validation = list(set(m_expert) - training)
-        training = list(training)
-        validation.sort()
-        training.sort()
-
+        m_expert, training, validation = gw.generate_expert_demonstrations(expert_idx, cross_validate=0.8)
 
         for j, gamma in enumerate(gamma_list):
             # run lp irl
@@ -129,18 +123,17 @@ def cross_validate(grid_size, gt_discount, expert_fraction, n_mdp):
             expert_diff = np.sum([policy[i] != expert_policy[i] for i in m_expert])
             val_diff = np.sum([policy[i] != expert_policy[i] for i in validation])
             gt_diff = gw.n_states - np.sum(np.equal(policy, expert_policy))
-            gt_error[j] += gt_diff
-            expert_error[j] += expert_diff
-            validate_error[j] += val_diff
-            print(f"MDP {j}, gamma {gamma}, val error {val_diff}, expert_error {expert_diff}, gt_error {gt_diff}")
+            gt_error[i][j] = gt_diff
+            expert_error[i][j] = expert_diff
+            validate_error[i][j] = val_diff
+            print(f"MDP {i}, gamma {gamma}, val error {val_diff}, expert_error {expert_diff}, gt_error {gt_diff}")
 
-    gt_error[:] = [x / (n_mdp * gw.n_states)  for x in gt_error]
-    validate_error[:] = [x / (n_mdp * len(validation)) for x in validate_error]
-    expert_error[:] = [x / (n_mdp * len(m_expert)) for x in expert_error]
+        with open(f'./cross_validate/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+            pickle.dump(
+                {"gamma": gamma_list, "gt_error": gt_error, "val_error": validate_error, "expert_error": expert_error, "m_expert": expert_idx},
+                fp)
 
-    with open(f'./batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
-        pickle.dump({"gamma": gamma_list, "gt_error": gt_error, "val_error": validate_error, "expert_error": expert_error}, fp, protocol=pickle.HIGHEST_PROTOCOL)
-    plot_cross_validation_curve(expert_fraction, gamma_list=gamma_list, gt_error=gt_error, val_error=validate_error, expert_error=expert_error,  batch=n_mdp)
+    plot_cross_validation_curve(expert_fraction, gw.n_states, gamma_list=gamma_list, gt_error=gt_error, val_error=validate_error, expert_error=expert_error,  batch=n_mdp)
 
 
 def lp_irl(gw, m_expert, training_discount):
@@ -150,11 +143,11 @@ def lp_irl(gw, m_expert, training_discount):
     return r, V, policy
 
 
-def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None, batch=0):
+def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None):
 
     if filename is not None:
-        with open(filename, 'wb') as fp:
-            data = pickle.load(fp, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(filename, 'rb') as fp:
+            data = pickle.load(fp)
             gamma_list = data['gamma']
             error = data['error']
 
@@ -164,44 +157,70 @@ def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None
     ax.set_ylabel('Error Count', fontsize="medium")
     ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
     fig.tight_layout()
-    if batch > 0:
-        plt.savefig(f"./batch/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
-    else:
-        plt.savefig(f"expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"expert_{expert_fraction}_error_curve.jpg")
     # plt.show()
 
-def plot_cross_validation_curve(expert_fraction, filename=None, gamma_list=None, gt_error=None, val_error=None, expert_error=None, batch=0):
+
+def plot_batch_error_curve(expert_fraction, filename=None, gamma_list=None, error=None, batch=0):
 
     if filename is not None:
-        with open(filename, 'wb') as fp:
-            data = pickle.load(fp, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(filename, 'rb') as fp:
+            data = pickle.load(fp)
+            gamma_list = data['gamma']
+            error = data['error']
+    mean, std = np.mean(error, axis=0), np.std(error, axis=0)
+
+    fig, ax = plt.subplots()
+    ax.plot(gamma_list, mean, lw=2, color='blue')
+    ax.fill_between(gamma_list, mean + std, mean - std, facecolor='blue', alpha=0.5)
+
+    ax.set_xlabel('Gamma', fontsize="medium")
+    ax.set_ylabel('Average Error Count', fontsize="medium")
+    ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
+    fig.tight_layout()
+
+    plt.savefig(f"./batch/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
+
+def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_list=None, gt_error=None, val_error=None, expert_error=None, batch=0):
+
+    if filename is not None:
+        with open(filename, 'rb') as fp:
+            data = pickle.load(fp)
             gamma_list = data['gamma']
             gt_error = data['gt_error']
             val_error = data['val_error']
             expert_error = data['expert_error']
 
-    fig, axes = plt.subplots(3, 1, layout="constrained", figsize=(10, 10), sharex=True)
-    axes[0].plot(gamma_list, val_error)
-    axes[0].set_ylabel('Validation Error', fontsize="medium")
-    axes[0].set_title('Percentage of error in validation set', fontsize="medium")
+    gt_mean, gt_std = np.mean(gt_error/n_states, axis=0), np.std(gt_error/n_states, axis=0)
 
-    axes[1].plot(gamma_list, expert_error)
-    axes[1].set_ylabel('Training + Validation Error', fontsize="medium")
-    axes[1].set_title('Percentage of error in the given expert set', fontsize="medium")
+    m_expert = int(expert_fraction*n_states)
+    expert_mean, expert_std = np.mean(expert_error / m_expert, axis=0), np.std(expert_error / m_expert, axis=0)
 
-    axes[2].plot(gamma_list, gt_error)
-    axes[2].set_xlabel('Gamma', fontsize="medium")
-    axes[2].set_ylabel('GroundTruth Error', fontsize="medium")
-    axes[2].set_title('Percentage of error for the complete expert', fontsize="medium")
+    k_val = m_expert - int(m_expert*0.8)
+    val_mean, val_std = np.mean(val_error / k_val, axis=0), np.std(val_error / k_val, axis=0)
 
-    fig.tight_layout()
+    fig, ax = plt.subplots(layout="constrained", figsize=(6, 6))
+    ax.plot(gamma_list, val_mean, label='Validation Error', lw=2, color='blue')
+    ax.fill_between(gamma_list, val_mean + val_std, val_mean - val_std, facecolor='blue', alpha=0.3)
+
+    ax.plot(gamma_list, expert_mean, label='Training + validation Error', lw=2, color='purple')
+    ax.fill_between(gamma_list, expert_mean + expert_std, expert_mean - expert_std, facecolor='purple', alpha=0.3)
+
+    ax.plot(gamma_list, gt_mean, label='GroundTruth Error', lw=2, color='darkgreen')
+    ax.fill_between(gamma_list, gt_mean + gt_std, gt_mean - gt_std, facecolor='darkgreen', alpha=0.3)
+
+    ax.set_xlabel('Gamma', fontsize="medium")
+    ax.set_ylabel('Percentage Error', fontsize="medium")
+    ax.set_title('Percentage of Error for different Gammas')
+    ax.legend(loc='lower right')
+    # fig.tight_layout()
     plt.savefig(f"./cross_validate/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
 
     # plt.show()
 
 
 if __name__ == '__main__':
-    # test(10, 0.99, 0.10)
-    # batch_test(10, 0.99, 0.1, 100)
-    cross_validate(10, 0.99, 0.2, 100)
 
+    # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
+    batch_test(10, 0.99, 0.25, 20, 20)
+    cross_validate(10, 0.99, 0.2, 20, 20)
