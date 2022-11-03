@@ -56,9 +56,9 @@ class GridworldRandom(object):
                                   self.discount)
 
             print("finished computing V-value")
-        self.policy = find_policy(self.n_states, self.n_actions, self.transition_probability, [self.reward(s) for s in range(self.n_states)], self.discount,
+            self.policy = find_policy(self.n_states, self.n_actions, self.transition_probability, [self.reward(s) for s in range(self.n_states)], self.discount,
                         threshold=1e-2, v=self.opt_v, stochastic=False)
-        print("finished computing the expert policy")
+            print("finished computing the expert policy")
 
     def __str__(self):
         return "Gridworld({}, {}, {})".format(self.grid_size, self.wind,
@@ -256,7 +256,8 @@ class GridworldRandom(object):
         cached_states_sets = {}
 
         num_covered = n_states - len(uncovered_states)
-        while num_covered < n_states:
+        # while num_covered < n_states:
+        while len(trajectories) < 100:
             print(f"{len(trajectories)} trajs and {num_covered} states")
             state_int = random.sample(uncovered_states, 1)[0]
             trajectory = []
