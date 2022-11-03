@@ -29,7 +29,7 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
     discount: MDP discount factor. float.
     """
     # construct the env and get expert demonstrations.
-    with open(f'./maxent_expert/gridworld_expert_gridworld_{}.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/gridworld_expert_gridworld_gridsize_{grid_size}_traj_len_50.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_pos = list(data.keys())[0]
         demo = data[goal_pos]
@@ -37,7 +37,8 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
     ground_r = demo["gt_r"]
     expert_policy = demo["expert_policy"]
     trajectories, state_num_list = demo["trajectories"]
-    trajectories = trajectories[]
+    trajectories = trajectories[:n_trajs]
+    state_coverage = state_num_list[n_trajs]
     feature_matrix = demo["feature_matrix"]
     transition_function = demo["transition_function"]
     n_actions = demo["n_actions"]
@@ -47,7 +48,8 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
     result = []
 
     fig, axs = plt.subplots(2, 11, layout="constrained", figsize=(35, 5), sharex=True, sharey=True)
-    fig.suptitle(f"Performance for each gamma with {expert_fraction*100}% of expert coverage")
+    fig.suptitle(f"Performance for each gamma with {n_trajs} expert trajectories \\"
+                 f" (covering {state_coverage} states)")
     gamma_list = [0.99, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
 
     # plot the ground truth v and r
@@ -78,17 +80,17 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
         plt.colorbar(im3, ax=ax3)
         ax3.set_title(f"Gamma = {gamma}", fontsize='small')
 
-    plt.savefig(f"./output/gridworld/maxent/expert_{expert_fraction}_V_R_gridsize_{grid_size}.jpg")
+    plt.savefig(f"./output/gridworld/maxent/expert_{n_trajs}_V_R_gridsize_{grid_size}.jpg")
     gamma_list.reverse()
     result.reverse()
     print(result)
-    with open(f'./output/gridworld/maxent/single_mdp/expert_{expert_fraction}_gridsize_{grid_size}.pkl', 'wb') as fp:
+    with open(f'./output/gridworld/maxent/single_mdp/expert_{n_trajs}_gridsize_{grid_size}.pkl', 'wb') as fp:
         pickle.dump({"gamma": gamma_list, "error": result}, fp)
-    plot_error_curve(expert_fraction, gamma_list=gamma_list, error=result)
+    plot_error_curve(n_trajs, gamma_list=gamma_list, error=result)
 
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
-def batch_test(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
+def batch_test(grid_size, n_trajs, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
 
     with open(f'./maxent_expert/gridworld_expert_length_8.pkl', 'rb') as fp:
         data = pickle.load(fp)
@@ -177,7 +179,7 @@ def maxent_irl(feature_matrix, n_states, n_actions, training_discount, transitio
     return r, value, policy
 
 
-def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None):
+def plot_error_curve(expert_n, filename=None, gamma_list=None, error=None):
 
     if filename is not None:
         with open(filename, 'rb') as fp:
@@ -191,7 +193,7 @@ def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None
     ax.set_ylabel('Error Count', fontsize="medium")
     ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
     fig.tight_layout()
-    plt.savefig(f"./output/gridworld/maxent/single_mdp/expert_{expert_fraction}_error_curve_length_8.jpg")
+    plt.savefig(f"./output/gridworld/maxent/single_mdp/expert_{expert_n}_error_curve_length_8.jpg")
     plt.show()
 
 
@@ -259,11 +261,11 @@ def cache_expert_demo(grid_size, n_mdp):
     goal_states = np.random.choice(range(grid_size ** 2), 20, replace=False)
     demo = {}
 
-    for i in tqdm(range(n_mdp)):
+    for i in range(n_mdp):
         goal_pos = goal_states[i]
         gw = gridworld.GridworldRandom(grid_size, 0.1, 0.99, V=True, goal_pos=goal_pos)
         ground_r = np.array([gw.reward(s) for s in range(gw.n_states)])
-        trajectory_length = 50
+        trajectory_length = 15
         trajectories, _, _, state_num_list = gw.generate_trajectories(gw.n_states, trajectory_length)
         feature_matrix = gw.feature_matrix()
         demo[goal_pos] = {"gt_r": ground_r, "expert_policy": gw.policy, "trajectories": [trajectories, state_num_list], "feature_matrix":
@@ -298,7 +300,7 @@ def parse(argv):
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
-    grid_size = 50
+    grid_size = 30
 
     method, expert_n = parse(sys.argv)
     if method == "expert":
