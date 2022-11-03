@@ -264,7 +264,7 @@ def cache_expert_demo(grid_size, n_objects, n_colours, n_mdp):
         goal_pos = goal_states[i]
         gw = objectworld.ObjectworldRandom(grid_size, n_objects, n_colours, 0.1, 0.99, V=True, goal_pos=goal_pos)
         ground_r = np.array([gw.reward(s) for s in range(gw.n_states)])
-        trajectory_length = 50
+        trajectory_length = 15
         trajectories, cached_idx_list, cached_num_state_list, state_num_list = gw.generate_trajectories(gw.n_states, trajectory_length)
         feature_matrix = gw.feature_matrix()
         demo[goal_pos] = {"gt_r": ground_r, "expert_policy": gw.policy, "trajectories": [trajectories, cached_idx_list, cached_num_state_list, state_num_list], "feature_matrix":
@@ -299,7 +299,7 @@ def parse(argv):
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
-    grid_size = 50
+    grid_size = 30
     # cache_expert_demo(grid_size, 15, 5, 20)
 
     method, expert_n = parse(sys.argv)
