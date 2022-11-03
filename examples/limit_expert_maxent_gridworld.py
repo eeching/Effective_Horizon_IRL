@@ -14,6 +14,7 @@ from irl.value_iteration import optimal_value, find_policy
 import pdb
 import pickle
 import random
+import tqdm
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
 def test(grid_size, expert_fraction, epochs=200, learning_rate=0.01):
@@ -256,25 +257,25 @@ def cache_expert_demo(grid_size, n_mdp):
     goal_states = np.random.choice(range(grid_size ** 2), 20, replace=False)
     demo = {}
 
-    for i in range(n_mdp):
+    for i in tqdm(range(n_mdp)):
         goal_pos = goal_states[i]
         gw = gridworld.GridworldRandom(grid_size, 0.1, 0.99, V=True, goal_pos=goal_pos)
         ground_r = np.array([gw.reward(s) for s in range(gw.n_states)])
-        trajectory_length = 8
+        trajectory_length = 50
         trajectories, cached_idx_list, cached_num_state_list, state_num_list = gw.generate_trajectories(gw.n_states, trajectory_length)
         feature_matrix = gw.feature_matrix()
         demo[goal_pos] = {"gt_r": ground_r, "expert_policy": gw.policy, "trajectories": [trajectories, cached_idx_list, cached_num_state_list, state_num_list], "feature_matrix":
                           feature_matrix, "transition_function": gw.transition_probability, "n_actions": gw.n_actions, "n_states": gw.n_states, "opt_v": gw.opt_v}
 
-        with open(f'./maxent_expert/gridworld_expert_length_8.pkl', 'wb') as fp:
+        with open(f'./maxent_expert/gridworld_expert_gridsize_{grid_size}_traj_len_{trajectory_length}.pkl', 'wb') as fp:
             pickle.dump(demo, fp)
 
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
-    grid_size = 10
-    #  cache_expert_demo(grid_size, 20)
+    grid_size = 50
+    cache_expert_demo(grid_size, 20)
 
     # test(10, 1)
     # batch_test(grid_size, 1, 10, 10, epochs=200, learning_rate=0.01)
-    cross_validate(grid_size, 1, 10, 10, epochs=200, learning_rate=0.01)
+    # cross_validate(grid_size, 1, 10, 10, epochs=200, learning_rate=0.01)
