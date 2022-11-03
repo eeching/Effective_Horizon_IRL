@@ -256,7 +256,8 @@ class GridworldRandom(object):
         cached_states_sets = {}
 
         num_covered = n_states - len(uncovered_states)
-        while num_covered < n_states:
+        # while num_covered < n_states:
+        while len(trajectories) < 100:
             print(f"{len(trajectories)} trajs and {num_covered} states")
             state_int = random.sample(uncovered_states, 1)[0]
             trajectory = []
