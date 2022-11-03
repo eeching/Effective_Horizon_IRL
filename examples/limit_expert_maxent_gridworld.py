@@ -29,7 +29,7 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
     discount: MDP discount factor. float.
     """
     # construct the env and get expert demonstrations.
-    with open(f'./maxent_expert/gridworld_expert_gridworld_{}.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/gridworld_expert_gridworld_gridsize_{grid_size}_traj_len_50.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_pos = list(data.keys())[0]
         demo = data[goal_pos]
@@ -37,7 +37,7 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
     ground_r = demo["gt_r"]
     expert_policy = demo["expert_policy"]
     trajectories, state_num_list = demo["trajectories"]
-    trajectories = trajectories[]
+    trajectories = trajectories
     feature_matrix = demo["feature_matrix"]
     transition_function = demo["transition_function"]
     n_actions = demo["n_actions"]
@@ -259,11 +259,12 @@ def cache_expert_demo(grid_size, n_mdp):
     goal_states = np.random.choice(range(grid_size ** 2), 20, replace=False)
     demo = {}
 
-    for i in tqdm(range(n_mdp)):
+    for i in range(n_mdp):
         goal_pos = goal_states[i]
+        print("==========", i)
         gw = gridworld.GridworldRandom(grid_size, 0.1, 0.99, V=True, goal_pos=goal_pos)
         ground_r = np.array([gw.reward(s) for s in range(gw.n_states)])
-        trajectory_length = 50
+        trajectory_length = 15
         trajectories, _, _, state_num_list = gw.generate_trajectories(gw.n_states, trajectory_length)
         feature_matrix = gw.feature_matrix()
         demo[goal_pos] = {"gt_r": ground_r, "expert_policy": gw.policy, "trajectories": [trajectories, state_num_list], "feature_matrix":
@@ -280,7 +281,8 @@ def parse(argv):
     try:
         opts, args = getopt.getopt(argv[1:], "hm:n:", ["help", "method=",
                                                          "num_expert_traj="])
-    except:
+    except Exception as e:
+        print(e)
         print(arg_help)
         sys.exit(2)
 
@@ -298,12 +300,14 @@ def parse(argv):
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
-    grid_size = 50
+    grid_size = 30
 
     method, expert_n = parse(sys.argv)
+
+    print(method, expert_n)
     if method == "expert":
         cache_expert_demo(grid_size, 20)
-    if method == "single":
+    elif method == "single":
         test(grid_size, 0.99, int(expert_n))
     elif method == "batch":
         batch_test(grid_size, 0.99, int(expert_n), 10, 20, epochs=200, learning_rate=0.01)

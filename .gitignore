@@ -56,4 +56,4 @@ docs/_build/
 # PyBuilder
 target/
 maxent_expert/
-output1/
+output_old/
