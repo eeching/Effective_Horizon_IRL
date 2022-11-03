@@ -277,6 +277,6 @@ if __name__ == '__main__':
     grid_size = 10
     # cache_expert_demo(grid_size, 15, 5, 20)
 
-    # test(10, 0.5)
+    test(10, 0.1)
     # batch_test(grid_size, 1, 10, 12, epochs=200, learning_rate=0.01)
-    cross_validate(grid_size, 1, 20, 12, epochs=200, learning_rate=0.01)
+    # cross_validate(grid_size, 1, 20, 12, epochs=200, learning_rate=0.01)

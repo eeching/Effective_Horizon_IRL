@@ -11,6 +11,7 @@ import numpy as np
 import numpy.random as rn
 
 from . import value_iteration
+from tqdm import tqdm
 
 def irl(feature_matrix, n_actions, discount, transition_probability,
         trajectories, epochs, learning_rate):
@@ -43,7 +44,7 @@ def irl(feature_matrix, n_actions, discount, transition_probability,
                                                      trajectories)
 
     # Gradient descent on alpha.
-    for i in range(epochs):
+    for i in tqdm(range(epochs)):
         # print("i: {}".format(i))
         r = feature_matrix.dot(alpha)
         expected_svf = find_expected_svf(n_states, r, n_actions, discount,
