@@ -95,7 +95,7 @@ def batch_test(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
             result[i][j] = diff
             print(f"MDP {i}, gamma {gamma}, error {diff}")
 
-        with open(f'./batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+        with open(f'./objectworld_lp/batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
             pickle.dump({"gamma": gamma_list, "error": result, "n_mdp": i+1}, fp)
 
     print(result)
@@ -220,6 +220,6 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
-    test(10, 0.99, 0.5)
+    # test(10, 0.99, 0.5)
     # batch_test(10, 0.99, 1, 20, 12)
-    # cross_validate(10, 0.99, 0.2, 20, 12)
+    cross_validate(10, 0.99, 1, 20, 12)
