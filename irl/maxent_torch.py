@@ -40,6 +40,7 @@ def irl(feature_matrix, n_actions, discount, transition_probability,
     transition_probability_torch = torch.from_numpy(transition_probability.astype(np.float32)).to(device)
     n_states_torch, n_actions_torch, discount_torch = torch.tensor(n_states), torch.tensor(n_actions), torch.tensor(discount).to(device)
 
+    pdb.set_trace()
     # Calculate the feature expectations \tilde{phi}.
     feature_expectations = find_feature_expectations(feature_matrix_torch,
                                                      trajectories_torch)
