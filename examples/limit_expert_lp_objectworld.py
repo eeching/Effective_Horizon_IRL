@@ -95,7 +95,7 @@ def batch_test(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
             result[i][j] = diff
             print(f"MDP {i}, gamma {gamma}, error {diff}")
 
-        with open(f'./batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+        with open(f'./objectworld_lp/batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
             pickle.dump({"gamma": gamma_list, "error": result, "n_mdp": i+1}, fp)
 
     print(result)
