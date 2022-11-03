@@ -71,7 +71,7 @@ def test(grid_size, gt_discount, expert_fraction):
     gamma_list.reverse()
     result.reverse()
     print(result)
-    with open(f'./objectworld_lp/single_mdp/expert_{expert_fraction}.p', 'wb') as fp:
+    with open(f'./output/objectworld/lp/single_mdp/expert_{expert_fraction}.p', 'wb') as fp:
         pickle.dump({"gamma": gamma_list, "error": result}, fp)
     plot_error_curve(expert_fraction, gamma_list=gamma_list, error=result)
 
@@ -95,7 +95,7 @@ def batch_test(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
             result[i][j] = diff
             print(f"MDP {i}, gamma {gamma}, error {diff}")
 
-        with open(f'./objectworld_lp/batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+        with open(f'./output/objectworld/lp/batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
             pickle.dump({"gamma": gamma_list, "error": result, "n_mdp": i+1}, fp)
 
     print(result)
@@ -126,7 +126,7 @@ def cross_validate(grid_size, gt_discount, expert_fraction, n_mdp, num_gamma):
             validate_error[i][j] = val_diff
             print(f"MDP {i}, gamma {gamma}, val error {val_diff}, expert_error {expert_diff}, gt_error {gt_diff}")
 
-        with open(f'./objectworld_lp/cross_validate/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+        with open(f'./output/objectworld/lp/cross_validate/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
             pickle.dump(
                 {"gamma": gamma_list, "gt_error": gt_error, "val_error": validate_error, "expert_error": expert_error, "m_expert": expert_idx},
                 fp)
@@ -155,7 +155,7 @@ def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None
     ax.set_ylabel('Error Count', fontsize="medium")
     ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
     fig.tight_layout()
-    plt.savefig(f"./objectworld_lp/single_mdp/expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./output/objectworld/lp/single_mdp/expert_{expert_fraction}_error_curve.jpg")
     # plt.show()
 
 
@@ -177,7 +177,7 @@ def plot_batch_error_curve(expert_fraction, filename=None, gamma_list=None, erro
     ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
     fig.tight_layout()
 
-    plt.savefig(f"./objectworld_lp/batch/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./output/objectworld/lp/batch/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
 
 def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_list=None, gt_error=None, val_error=None, expert_error=None, batch=0):
 
@@ -212,7 +212,7 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
     ax.set_title('Percentage of Error for different Gammas')
     ax.legend(loc='lower right')
     # fig.tight_layout()
-    plt.savefig(f"./objectworld_lp/cross_validate/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./output/objectworld/lp/cross_validate/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
 
     # plt.show()
 
