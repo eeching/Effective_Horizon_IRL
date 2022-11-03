@@ -14,6 +14,9 @@ import pdb
 import pickle
 import random
 
+import sys
+import getopt
+
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
 def test(grid_size, gt_discount, expert_fraction):
     """
@@ -65,7 +68,7 @@ def test(grid_size, gt_discount, expert_fraction):
         im3 = ax3.pcolor(learned_V.reshape((grid_size, grid_size)))
         plt.colorbar(im3, ax=ax3)
         ax3.set_title(f"Gamma = {gamma}", fontsize='small')
-    plt.savefig(f"expert_{expert_fraction}_V_R.jpg")
+    plt.savefig(f"./output/gridworld/lp/single_mdp/expert_{expert_fraction}_V_R.jpg")
     # plt.show()
     gamma_list.reverse()
     result.reverse()
@@ -215,9 +218,38 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
     # plt.show()
 
 
+def parse(argv):
+    arg_method = ""
+    arg_expert_frac = ""
+    arg_help = "{0} -m <method> -f <expert_frac>".format(argv[0])
+
+    try:
+        opts, args = getopt.getopt(argv[1:], "hm:f:", ["help", "method=",
+                                                         "expert_frac="])
+    except:
+        print(arg_help)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            print(arg_help)  # print the help message
+            sys.exit(2)
+        elif opt in ("-m", "--method"):
+            arg_method = arg
+        elif opt in ("-f", "--expert_frac"):
+            arg_expert_frac = arg
+
+    return arg_method, arg_expert_frac
+
+
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
 
-    batch_test(10, 0.99, 1, 20, 12)
-    # cross_validate(10, 0.99, 0.2, 20, 12)
+    method, expert_frac = parse(sys.argv)
+    if method == "single":
+        test(10, 0.99, float(expert_frac))
+    elif method == "batch":
+        batch_test(10, 0.99, float(expert_frac), 20, 20)
+    elif method == "cross":
+        cross_validate(10, 0.99, float(expert_frac), 20, 20)
