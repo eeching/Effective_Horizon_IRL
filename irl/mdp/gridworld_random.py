@@ -47,6 +47,7 @@ class GridworldRandom(object):
                for k in range(self.n_states)]
               for j in range(self.n_actions)]
              for i in range(self.n_states)])
+        self.opt_v = None
         if V:
             self.opt_v = optimal_value(self.n_states,
                                   self.n_actions,
