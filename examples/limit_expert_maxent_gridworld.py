@@ -15,6 +15,8 @@ import pdb
 import pickle
 import random
 import tqdm
+import sys
+import getopt
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
 def test(grid_size, expert_fraction, epochs=200, learning_rate=0.01):
@@ -76,11 +78,11 @@ def test(grid_size, expert_fraction, epochs=200, learning_rate=0.01):
         plt.colorbar(im3, ax=ax3)
         ax3.set_title(f"Gamma = {gamma}", fontsize='small')
 
-    plt.savefig(f"./maxent_result/expert_{expert_fraction}_V_R_gridworld_length_8.jpg")
+    plt.savefig(f"./output/gridworld/maxent/expert_{expert_fraction}_V_R_gridsize_{grid_size}.jpg")
     gamma_list.reverse()
     result.reverse()
     print(result)
-    with open(f'./output/gridworld/maxent/single_mdp/expert_{expert_fraction}_gridworld_length_8.pkl', 'wb') as fp:
+    with open(f'./output/gridworld/maxent/single_mdp/expert_{expert_fraction}_gridsize_{grid_size}.pkl', 'wb') as fp:
         pickle.dump({"gamma": gamma_list, "error": result}, fp)
     plot_error_curve(expert_fraction, gamma_list=gamma_list, error=result)
 
@@ -270,12 +272,41 @@ def cache_expert_demo(grid_size, n_mdp):
         with open(f'./maxent_expert/gridworld_expert_gridsize_{grid_size}_traj_len_{trajectory_length}.pkl', 'wb') as fp:
             pickle.dump(demo, fp)
 
+def parse(argv):
+    arg_method = ""
+    arg_expert_n = ""
+    arg_help = "{0} -m <method> -f <expert_frac>".format(argv[0])
+
+    try:
+        opts, args = getopt.getopt(argv[1:], "hm:n:", ["help", "method=",
+                                                         "num_expert_traj="])
+    except:
+        print(arg_help)
+        sys.exit(2)
+
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            print(arg_help)  # print the help message
+            sys.exit(2)
+        elif opt in ("-m", "--method"):
+            arg_method = arg
+        elif opt in ("-n", "--num_expert_traj"):
+            arg_expert_n = arg
+
+    return arg_method, arg_expert_n
+
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
     grid_size = 50
-    cache_expert_demo(grid_size, 20)
 
-    # test(10, 1)
-    # batch_test(grid_size, 1, 10, 10, epochs=200, learning_rate=0.01)
-    # cross_validate(grid_size, 1, 10, 10, epochs=200, learning_rate=0.01)
+    # cache_expert_demo(grid_size, 20)
+
+    method, expert_n = parse(sys.argv)
+    if method == "single":
+        test(grid_size, 0.99, int(expert_n))
+    elif method == "batch":
+        batch_test(grid_size, 0.99, int(expert_n), 10, 20, epochs=200, learning_rate=0.01)
+    elif method == "cross":
+        cross_validate(grid_size, 0.99, int(expert_n), 10, 20, epochs=200, learning_rate=0.01)
+
