@@ -29,7 +29,7 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
     discount: MDP discount factor. float.
     """
     # construct the env and get expert demonstrations.
-    with open(f'./maxent_expert/gridworld_expert_gridworld_gridsize_{grid_size}_traj_len_50.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/gridworld_expert_gridsize_{grid_size}_traj_len_15.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_pos = list(data.keys())[0]
         demo = data[goal_pos]
@@ -80,7 +80,7 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
         plt.colorbar(im3, ax=ax3)
         ax3.set_title(f"Gamma = {gamma}", fontsize='small')
 
-    plt.savefig(f"./output/gridworld/maxent/expert_{n_trajs}_V_R_gridsize_{grid_size}.jpg")
+    plt.savefig(f"./output/gridworld/maxent/single_mdp/expert_{n_trajs}_V_R_gridsize_{grid_size}.jpg")
     gamma_list.reverse()
     result.reverse()
     print(result)
@@ -92,7 +92,7 @@ def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
 def batch_test(grid_size, n_trajs, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
 
-    with open(f'./maxent_expert/gridworld_expert_length_8.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/gridworld_expert_gridsize_{grid_size}_traj_len_15.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_poses_itr = iter(list(data.keys()))
 
@@ -127,7 +127,7 @@ def batch_test(grid_size, n_trajs, n_mdp, num_gamma, epochs=200, learning_rate=0
 # (0.8, 0.2) training and validating splits
 def cross_validate(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
 
-    with open(f'./maxent_expert/gridworld_expert_length_8.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/gridworld_expert_gridsize_{grid_size}_traj_len_15.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_poses_itr = iter(list(data.keys()))
 
@@ -139,9 +139,7 @@ def cross_validate(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, lea
         demo = data[goal_pos]
         expert_policy = demo["expert_policy"]
         trajectories, idx_list, cached_num_state_list, _ = demo["trajectories"]
-        # trajectories = trajectories[:idx_list[int(grid_size ** 2 * expert_fraction)] + 1]
         training_traj = trajectories[:idx_list[int(grid_size ** 2 * expert_fraction*0.8)] + 1]
-        # validate_traj = trajectories[idx_list[int(grid_size ** 2 * expert_fraction*0.8)] + 1 : idx_list[int(grid_size ** 2 * expert_fraction)+1]]
         traj_states = cached_num_state_list[int(grid_size ** 2 * expert_fraction)]
         train_states = cached_num_state_list[int(grid_size ** 2 * expert_fraction*0.8)]
         validate_states = traj_states - train_states
@@ -161,7 +159,7 @@ def cross_validate(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, lea
             validate_error[i][j] = val_diff
             print(f"MDP {i}, gamma {gamma}, val error {val_diff}, expert_error {expert_diff}, gt_error {gt_diff}")
 
-        with open(f'./output/gridworld/maxent/cross_validate/{n_mdp}_expert_{expert_fraction}_length_8.p', 'wb') as fp:
+        with open(f'./output/gridworld/maxent/cross_validate/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
             pickle.dump(
                 {"gamma": gamma_list, "gt_error": gt_error, "val_error": validate_error, "expert_error": expert_error},
                 fp)
@@ -191,9 +189,11 @@ def plot_error_curve(expert_n, filename=None, gamma_list=None, error=None):
     ax.plot(gamma_list, error)
     ax.set_xlabel('Gamma', fontsize="medium")
     ax.set_ylabel('Error Count', fontsize="medium")
-    ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
+    ax.set_title(f'Discrepancy between the induced policy and the expert for different Gammas, \\
+    {n_trajs} expert trajs covering {covered_states} states.', fontsize="large")
+    
     fig.tight_layout()
-    plt.savefig(f"./output/gridworld/maxent/single_mdp/expert_{expert_n}_error_curve_length_8.jpg")
+    plt.savefig(f"./output/gridworld/maxent/single_mdp/expert_{expert_n}_error_curve.jpg")
     plt.show()
 
 
@@ -310,9 +310,9 @@ if __name__ == '__main__':
     if method == "expert":
         cache_expert_demo(grid_size, 20)
     elif method == "single":
-        test(grid_size, 0.99, int(expert_n))
+        test(grid_size, int(expert_n))
     elif method == "batch":
-        batch_test(grid_size, 0.99, int(expert_n), 10, 20, epochs=200, learning_rate=0.01)
+        batch_test(grid_size, int(expert_n), 10, 20, epochs=200, learning_rate=0.01)
     elif method == "cross":
-        cross_validate(grid_size, 0.99, int(expert_n), 10, 20, epochs=200, learning_rate=0.01)
+        cross_validate(grid_size, int(expert_n), 10, 20, epochs=200, learning_rate=0.01)
 

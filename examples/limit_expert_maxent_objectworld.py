@@ -19,7 +19,7 @@ import getopt
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
 
-def test(grid_size, n_expert_traj, epochs=200, learning_rate=0.01):
+def test(grid_size, n_trajs, epochs=200, learning_rate=0.01):
     """
     Run maxent inverse reinforcement learning on the gridworld MDP.
 
@@ -29,15 +29,17 @@ def test(grid_size, n_expert_traj, epochs=200, learning_rate=0.01):
     discount: MDP discount factor. float.
     """
     # construct the env and get expert demonstrations.
-    with open(f'./maxent_expert/objectworld_expert_gridsize_{grid_size}_traj.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/objectworld_expert_gridsize_{grid_size}_traj_len_15.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_pos = list(data.keys())[0]
         demo = data[goal_pos]
 
+
     ground_r = demo["gt_r"]
     expert_policy = demo["expert_policy"]
-    trajectories, idx_list, _, _ = demo["trajectories"]
-    trajectories = trajectories[:idx_list[int(grid_size**2*expert_fraction)]+1]
+    trajectories, _, _, state_num_list = demo["trajectories"]
+    trajectories = trajectories[:n_trajs]
+    state_coverage = state_num_list[n_trajs]
     feature_matrix = demo["feature_matrix"]
     transition_function = demo["transition_function"]
     n_actions = demo["n_actions"]
@@ -47,7 +49,8 @@ def test(grid_size, n_expert_traj, epochs=200, learning_rate=0.01):
     result = []
 
     fig, axs = plt.subplots(2, 11, layout="constrained", figsize=(35, 5), sharex=True, sharey=True)
-    fig.suptitle(f"Performance for each gamma with {expert_fraction*100}% of expert coverage")
+    fig.suptitle(f"Performance for each gamma with {n_trajs} expert trajectories \\"
+                 f" (covering {state_coverage} states)")
     gamma_list = [0.99, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
 
     # plot the ground truth v and r
@@ -78,20 +81,20 @@ def test(grid_size, n_expert_traj, epochs=200, learning_rate=0.01):
         plt.colorbar(im3, ax=ax3)
         ax3.set_title(f"Gamma = {gamma}", fontsize='small')
 
-    plt.savefig(f"./maxent_result/expert_{expert_fraction}_V_R.jpg")
+    plt.savefig(f"./output/objectworld/maxent/single_mdp/expert_{n_trajs}_V_R_gridsize_{grid_size}.jpg")
     plt.show()
     gamma_list.reverse()
     result.reverse()
     print(result)
-    with open(f'./output/objectworld/maxent/single_mdp/expert_{expert_fraction}.pkl', 'wb') as fp:
+    with open(f'./output/objectworld/maxent/single_mdp/expert_{n_trajs}.pkl', 'wb') as fp:
         pickle.dump({"gamma": gamma_list, "error": result}, fp)
-    plot_error_curve(expert_fraction, gamma_list=gamma_list, error=result)
+    plot_error_curve(n_trajs, gamma_list=gamma_list, error=result)
 
 
 # use all expert demonstrations given, evaluate when comparing to the full expert_demonstrations
-def batch_test(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
+def batch_test(grid_size, n_trajs, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
 
-    with open(f'./maxent_expert/objectworld_expert.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/objectworld_expert_gridsize_{grid_size}_traj_len_15.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_poses_itr = iter(list(data.keys()))
 
@@ -102,8 +105,9 @@ def batch_test(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, learnin
         goal_pos = next(goal_poses_itr)
         demo = data[goal_pos]
         expert_policy = demo["expert_policy"]
-        trajectories, idx_list, _,  _ = demo["trajectories"]
-        trajectories = trajectories[:idx_list[int(grid_size ** 2 * expert_fraction)] + 1]
+        trajectories, _, _, state_num_list = demo["trajectories"]
+        trajectories = trajectories[:n_trajs]
+        state_coverage = state_num_list[n_trajs]
         feature_matrix = demo["feature_matrix"]
         transition_function = demo["transition_function"]
         n_actions = demo["n_actions"]
@@ -116,17 +120,17 @@ def batch_test(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, learnin
             result[i][j] = diff
             print(f"MDP {i}, gamma {gamma}, error {diff}")
 
-        with open(f'./output/objectworld/maxent/batch/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+        with open(f'./output/objectworld/maxent/batch/{n_mdp}_expert_{n_trajs}_gridsize_{grid_size}.p', 'wb') as fp:
             pickle.dump({"gamma": gamma_list, "error": result, "n_mdp": i+1}, fp)
 
     print(result)
-    plot_batch_error_curve(expert_fraction, gamma_list=gamma_list, error=result, batch=n_mdp)
+    plot_batch_error_curve(n_trajs, state_coverage, gamma_list=gamma_list, error=result, batch=n_mdp)
 
 # use a fraction of the given expert demonstration, choose gamma using the validation set, evaluate using the full expert
 # (0.8, 0.2) training and validating splits
-def cross_validate(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
+def cross_validate(grid_size, n_trajs, n_mdp, num_gamma, epochs=200, learning_rate=0.01):
 
-    with open(f'./maxent_expert/objectworld_expert.pkl', 'rb') as fp:
+    with open(f'./maxent_expert/objectworld_expert_gridsize_{grid_size}_traj_len_15.pkl', 'rb') as fp:
         data = pickle.load(fp)
         goal_poses_itr = iter(list(data.keys()))
 
@@ -137,13 +141,16 @@ def cross_validate(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, lea
         goal_pos = next(goal_poses_itr)
         demo = data[goal_pos]
         expert_policy = demo["expert_policy"]
-        trajectories, idx_list, cached_num_state_list, _ = demo["trajectories"]
-        # trajectories = trajectories[:idx_list[int(grid_size ** 2 * expert_fraction)] + 1]
-        training_traj = trajectories[:idx_list[int(grid_size ** 2 * expert_fraction*0.8)] + 1]
-        # validate_traj = trajectories[idx_list[int(grid_size ** 2 * expert_fraction*0.8)] + 1 : idx_list[int(grid_size ** 2 * expert_fraction)+1]]
-        traj_states = cached_num_state_list[int(grid_size ** 2 * expert_fraction)]
-        train_states = cached_num_state_list[int(grid_size ** 2 * expert_fraction*0.8)]
+
+        trajectories, _, _, state_num_list = demo["trajectories"]
+        trajectories = trajectories[:n_trajs]
+        state_coverage = state_num_list[n_trajs]
+        training_traj = trajectories[:int(0.8*n_trajs)]
+        traj_states = set(trajectories.flatten())
+        train_states = set(training_traj.flatten())
         validate_states = traj_states - train_states
+
+
         feature_matrix = demo["feature_matrix"]
         transition_function = demo["transition_function"]
         n_actions = demo["n_actions"]
@@ -160,12 +167,12 @@ def cross_validate(grid_size, expert_fraction, n_mdp, num_gamma, epochs=200, lea
             validate_error[i][j] = val_diff
             print(f"MDP {i}, gamma {gamma}, val error {val_diff}, expert_error {expert_diff}, gt_error {gt_diff}")
 
-        with open(f'./output/objectworld/maxent/cross_validate/{n_mdp}_expert_{expert_fraction}.p', 'wb') as fp:
+        with open(f'./output/objectworld/maxent/cross_validate/{n_mdp}_expert_{n_trajs}_gridsize_{grid_size}.p', 'wb') as fp:
             pickle.dump(
                 {"gamma": gamma_list, "gt_error": gt_error, "val_error": validate_error, "expert_error": expert_error},
                 fp)
 
-    plot_cross_validation_curve(expert_fraction, n_states, gamma_list=gamma_list, gt_error=gt_error, val_error=validate_error, expert_error=expert_error,  batch=n_mdp)
+    plot_cross_validation_curve(n_trajs, covered_states, n_states, gamma_list=gamma_list, gt_error=gt_error, val_error=validate_error, expert_error=expert_error,  batch=n_mdp)
 
 
 def maxent_irl(feature_matrix, n_states, n_actions, training_discount, transition_function, trajectories, epochs, learning_rate):
@@ -178,7 +185,7 @@ def maxent_irl(feature_matrix, n_states, n_actions, training_discount, transitio
     return r, value, policy
 
 
-def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None):
+def plot_error_curve(n_trajs, covered_states, filename=None, gamma_list=None, error=None):
 
     if filename is not None:
         with open(filename, 'rb') as fp:
@@ -190,13 +197,14 @@ def plot_error_curve(expert_fraction, filename=None, gamma_list=None, error=None
     ax.plot(gamma_list, error)
     ax.set_xlabel('Gamma', fontsize="medium")
     ax.set_ylabel('Error Count', fontsize="medium")
-    ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
+    ax.set_title(f'Discrepancy between the induced policy and the expert for different Gammas, \\
+    {n_trajs} expert trajs covering {covered_states} states.', fontsize="large")
     fig.tight_layout()
-    plt.savefig(f"./output/objectworld/maxent/single_mdp/expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./output/objectworld/maxent/single_mdp/expert_{n_trajs}_error_curve.jpg")
     plt.show()
 
 
-def plot_batch_error_curve(expert_fraction, filename=None, gamma_list=None, error=None, batch=0):
+def plot_batch_error_curve(n_trajs, covered_states, filename=None, gamma_list=None, error=None, batch=0):
 
     if filename is not None:
         with open(filename, 'rb') as fp:
@@ -211,13 +219,14 @@ def plot_batch_error_curve(expert_fraction, filename=None, gamma_list=None, erro
 
     ax.set_xlabel('Gamma', fontsize="medium")
     ax.set_ylabel('Average Error Count', fontsize="medium")
-    ax.set_title('Discrepancy between the induced policy and the expert for different Gammas', fontsize="large")
+    ax.set_title(f'Discrepancy between the induced policy and the expert for different Gammas, \\
+    {n_trajs} expert trajs covering {covered_states} states.', fontsize="large")
     fig.tight_layout()
 
-    plt.savefig(f"./output/objectworld/maxent/batch/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./output/objectworld/maxent/batch/{batch}_MDPs_expert_{n_trajs}_error_curve.jpg")
 
 
-def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_list=None, gt_error=None, val_error=None, expert_error=None, batch=0):
+def plot_cross_validation_curve(n_trajs, covered_states, n_states, filename=None, gamma_list=None, gt_error=None, val_error=None, expert_error=None, batch=0):
 
     if filename is not None:
         with open(filename, 'rb') as fp:
@@ -229,8 +238,7 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
 
     gt_mean, gt_std = np.mean(gt_error/n_states, axis=0), np.std(gt_error/n_states, axis=0)
 
-    m_expert = int(expert_fraction*n_states)
-    expert_mean, expert_std = np.mean(expert_error / m_expert, axis=0), np.std(expert_error / m_expert, axis=0)
+    expert_mean, expert_std = np.mean(expert_error / covered_states, axis=0), np.std(expert_error / covered_states, axis=0)
 
     k_val = m_expert - int(m_expert*0.8)
     val_mean, val_std = np.mean(val_error / k_val, axis=0), np.std(val_error / k_val, axis=0)
@@ -247,10 +255,11 @@ def plot_cross_validation_curve(expert_fraction, n_states, filename=None, gamma_
 
     ax.set_xlabel('Gamma', fontsize="medium")
     ax.set_ylabel('Percentage Error', fontsize="medium")
-    ax.set_title('Percentage of Error for different Gammas')
+    ax.set_title(f'Percentage for different Gammas, \\
+    {n_trajs} expert trajs covering {covered_states} states.', fontsize="large")
     ax.legend(loc='lower right')
     # fig.tight_layout()
-    plt.savefig(f"./output/objectworld/maxent/cross_validate/{batch}_MDPs_expert_{expert_fraction}_error_curve.jpg")
+    plt.savefig(f"./output/objectworld/maxent/cross_validate/{batch}_MDPs_expert_{n_trajs}_error_curve.jpg")
 
     # plt.show()
 
@@ -260,7 +269,8 @@ def cache_expert_demo(grid_size, n_objects, n_colours, n_mdp):
     goal_states = np.random.choice(range(grid_size ** 2), 20, replace=False)
     demo = {}
 
-    for i in tqdm(range(n_mdp)):
+    for i in range(n_mdp):
+        print("===============", i)
         goal_pos = goal_states[i]
         gw = objectworld.ObjectworldRandom(grid_size, n_objects, n_colours, 0.1, 0.99, V=True, goal_pos=goal_pos)
         ground_r = np.array([gw.reward(s) for s in range(gw.n_states)])
@@ -275,13 +285,14 @@ def cache_expert_demo(grid_size, n_objects, n_colours, n_mdp):
 
 def parse(argv):
     arg_method = ""
-    arg_expert_frac = ""
+    arg_expert_n = ""
     arg_help = "{0} -m <method> -f <expert_frac>".format(argv[0])
 
     try:
-        opts, args = getopt.getopt(argv[1:], "hm:f:", ["help", "method=",
-                                                         "expert_frac="])
-    except:
+        opts, args = getopt.getopt(argv[1:], "hm:n:", ["help", "method=",
+                                                         "num_expert_traj="])
+    except Exception as e:
+        print(e)
         print(arg_help)
         sys.exit(2)
 
@@ -291,18 +302,19 @@ def parse(argv):
             sys.exit(2)
         elif opt in ("-m", "--method"):
             arg_method = arg
-        elif opt in ("-f", "--expert_frac"):
-            arg_expert_frac = arg
+        elif opt in ("-n", "--num_expert_traj"):
+            arg_expert_n = arg
 
-    return arg_method, arg_expert_frac
+    return arg_method, arg_expert_n
 
 if __name__ == '__main__':
 
     # MDP grid size, gt_gamma, expert_fraction, n_mdps, n_gamma
     grid_size = 30
-    # cache_expert_demo(grid_size, 15, 5, 20)
 
     method, expert_n = parse(sys.argv)
+    if method == "expert":
+        cache_expert_demo(grid_size, 15, 5, 20)
     if method == "single":
         test(grid_size, int(expert_n))
     elif method == "batch":
