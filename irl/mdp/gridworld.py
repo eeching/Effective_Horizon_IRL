@@ -1,68 +1,100 @@
-"""
-Implements the gridworld MDP.
-
-Matthew Alger, 2015
-matthew.alger@anu.edu.au
-"""
-
+from irl.value_iteration_jax import optimal_value, find_policy
+import pdb
 import numpy as np
 import numpy.random as rn
 
+
 class Gridworld(object):
     """
-    Gridworld MDP.
+    Customized Gridworld MDP.
+    1/ Random Goal
+    2/ Sparse reward: Goal = 1, 0 otherwise
+    3/ Random Obstacles
     """
 
-    def __init__(self, grid_size, wind, discount):
+    def __init__(self, wind=0.1, discount=0.99, grid_size=10, demo=None, seed=None, V=True, T=None, reward_model=None, finite_horizon=None, objectworld=False):
         """
-        grid_size: Grid size. int.
         wind: Chance of moving randomly. float.
         discount: MDP discount. float.
         -> Gridworld
         """
-
-        self.actions = ((1, 0), (0, 1), (-1, 0), (0, -1))
+       
+        self.actions = ((1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1), (0, 0))
         self.n_actions = len(self.actions)
-        self.n_states = grid_size**2
-        self.grid_size = grid_size
+        self.reward_model = reward_model
+        
+        if reward_model == "hard":
+            self.grid_size = 15
+        elif reward_model in ["simple", "linear", "non_linear"]:
+            self.grid_size = 10
+        else:
+            self.grid_size = grid_size
+    
+        self.n_states = self.grid_size**2
         self.wind = wind
         self.discount = discount
+        self.max_steps = self.grid_size * 3
+        self.seed = seed
+        self.finite_horizon = finite_horizon
+        self.rn = rn
+        self.rn.seed(self.seed)
 
-        # Preconstruct the transition probability array.
-        self.transition_probability = np.array(
+
+        if objectworld is False:
+            if reward_model == "simple":
+                if demo:
+                    self.goal_pos = [2*self.grid_size+2, 7*self.grid_size+3, 4*self.grid_size+8, 8*self.grid_size+8]  
+                else: 
+                    self.goal_pos = self.rn.choice(range(self.grid_size ** 2), 4, replace=False)
+            elif reward_model == "hard":
+                if demo:
+                    self.goal_pos = [2*self.grid_size+2, 9*self.grid_size+2, 6*self.grid_size+7, 9*self.grid_size+10, 12*self.grid_size+13, 1*self.grid_size+13]
+                else:
+                    self.goal_pos = self.rn.choice(range(self.grid_size ** 2), 6, replace=False)
+            else:
+                self.goal_pos = self.rn.randint(self.grid_size**2)
+
+        if T is None:
+            self.transition_probability = np.array(
             [[[self._transition_probability(i, j, k)
                for k in range(self.n_states)]
               for j in range(self.n_actions)]
              for i in range(self.n_states)])
+        else:
+            self.transition_probability = T
+        
+        self.opt_v = None
+        
+        if V and objectworld is False:
+            # self.reward_array = np.array([self.reward(s) for s in range(self.n_states)])
+            self.reward_array = self.get_reward_array()
+            self.opt_v = optimal_value(self.n_states,
+                                  self.n_actions,
+                                  self.transition_probability,
+                                  self.reward_array,
+                                  self.discount,
+                                  T=self.finite_horizon)
+
+            print("finished computing V-value")
+            self.policy, rep = find_policy(self.n_states, self.n_actions, self.transition_probability, self.reward_array, self.discount,
+                        self.opt_v, stochastic=False, T=self.finite_horizon)
+
+            if rep > 0:
+                print(f"Gt policy ---, No uniquely optimal policy, equally optimal actions number: {rep}")
+            print("finished computing the expert policy")
 
     def __str__(self):
         return "Gridworld({}, {}, {})".format(self.grid_size, self.wind,
                                               self.discount)
 
-    def feature_vector(self, i, feature_map="ident"):
+    def feature_vector(self, i, feature_map):
         """
         Get the feature vector associated with a state integer.
 
         i: State int.
-        feature_map: Which feature map to use (default ident). String in {ident,
-            coord, proxi}.
+        feature_map: Which feature map to use (default ident).
         -> Feature vector.
         """
-
-        if feature_map == "coord":
-            f = np.zeros(self.grid_size)
-            x, y = i % self.grid_size, i // self.grid_size
-            f[x] += 1
-            f[y] += 1
-            return f
-        if feature_map == "proxi":
-            f = np.zeros(self.n_states)
-            x, y = i % self.grid_size, i // self.grid_size
-            for b in range(self.grid_size):
-                for a in range(self.grid_size):
-                    dist = abs(x - a) + abs(y - b)
-                    f[self.point_to_int((a, b))] = dist
-            return f
         # Assume identity map.
         f = np.zeros(self.n_states)
         f[i] = 1
@@ -72,15 +104,14 @@ class Gridworld(object):
         """
         Get the feature matrix for this gridworld.
 
-        feature_map: Which feature map to use (default ident). String in {ident,
-            coord, proxi}.
+        feature_map: Which feature map to use (default ident). 
         -> NumPy array with shape (n_states, d_states).
         """
-
         features = []
         for n in range(self.n_states):
             f = self.feature_vector(n, feature_map)
             features.append(f)
+
         return np.array(features)
 
     def int_to_point(self, i):
@@ -112,9 +143,9 @@ class Gridworld(object):
         k: (x, y) int tuple.
         -> bool.
         """
-
-        return abs(i[0] - k[0]) + abs(i[1] - k[1]) <= 1
-
+        
+        return np.abs(i[0] - k[0]) <= 1 and  np.abs(i[1] - k[1]) <= 1
+         
     def _transition_probability(self, i, j, k):
         """
         Get the probability of transitioning from state i to state k given
@@ -129,64 +160,63 @@ class Gridworld(object):
         xi, yi = self.int_to_point(i)
         xj, yj = self.actions[j]
         xk, yk = self.int_to_point(k)
+        
+        corner_spare = 4
+        edge_spare = 6
 
         if not self.neighbouring((xi, yi), (xk, yk)):
             return 0.0
-
-        # Is k the intended state to move to?
+       
+       # Is k the intended state to move to?
         if (xi + xj, yi + yj) == (xk, yk):
-            return 1 - self.wind + self.wind/self.n_actions
+            return 1 - self.wind
 
-        # If these are not the same point, then we can move there by wind.
-        if (xi, yi) != (xk, yk):
-            return self.wind/self.n_actions
-
-        # If these are the same point, we can only move here by either moving
-        # off the grid or being blown off the grid. Are we on a corner or not?
+        # if xi, yi is a corner 
         if (xi, yi) in {(0, 0), (self.grid_size-1, self.grid_size-1),
                         (0, self.grid_size-1), (self.grid_size-1, 0)}:
-            # Corner.
-            # Can move off the edge in two directions.
-            # Did we intend to move off the grid?
+            # if we are moving off grid
             if not (0 <= xi + xj < self.grid_size and
                     0 <= yi + yj < self.grid_size):
-                # We intended to move off the grid, so we have the regular
-                # success chance of staying here plus an extra chance of blowing
-                # onto the *other* off-grid square.
-                return 1 - self.wind + 2*self.wind/self.n_actions
+                        # for diag action, only four actions are feasible, randomly to anyone
+                        return 1/corner_spare
+            # not moving off the grid
             else:
-                # We can blow off the grid in either direction only by wind.
-                return 2*self.wind/self.n_actions
+                # only move in 3 directions
+                return self.wind/(corner_spare-1)
+        # if it is an edge        
+        elif xi in {0, self.grid_size-1} or yi in {0, self.grid_size-1}:
+            # if we try to move off the grid, 6 direction as remaining
+            if not (0 <= xi + xj < self.grid_size and
+                    0 <= yi + yj < self.grid_size):
+                return 1/edge_spare
+            else:
+                # we try not to move off, some 5 remaining actions
+                return self.wind/(edge_spare-1)
         else:
-            # Not a corner. Is it an edge?
-            if (xi not in {0, self.grid_size-1} and
-                yi not in {0, self.grid_size-1}):
-                # Not an edge.
-                return 0.0
+            return self.wind/(self.n_actions-1)
 
-            # Edge.
-            # Can only move off the edge in one direction.
-            # Did we intend to move off the grid?
-            if not (0 <= xi + xj < self.grid_size and
-                    0 <= yi + yj < self.grid_size):
-                # We intended to move off the grid, so we have the regular
-                # success chance of staying here.
-                return 1 - self.wind + self.wind/self.n_actions
-            else:
-                # We can blow off the grid only by wind.
-                return self.wind/self.n_actions
+    def get_optimal_policy(self):
+        return self.policy
+    
+    def get_optimal_value(self):
+        return self.opt_v
+        
+    def get_reward_array(self):
+    
+        if self.reward_model in ["simple", "hard"]:
+            reward = np.zeros(self.n_states)
+            reward[self.goal_pos] = 1
+        
+            return reward
+    
+        unit_dist = self.reward_model/np.sqrt(self.grid_size**2*2)        
 
-    def reward(self, state_int):
-        """
-        Reward for being in state state_int.
-
-        state_int: State integer. int.
-        -> Reward.
-        """
-
-        if state_int == self.n_states - 1:
-            return 1
-        return 0
+        row = np.repeat(np.arange(self.grid_size), self.grid_size, axis=0).reshape(self.grid_size, self.grid_size)
+        col = np.repeat(np.arange(self.grid_size), self.grid_size, axis=0).reshape(self.grid_size, self.grid_size).T
+        reward = - np.sqrt(row**2+col**2)*unit_dist + self.reward_model
+        reward = reward.flatten()
+        reward[self.goal_pos] = self.reward_model*1.1
+        return reward
 
     def average_reward(self, n_trajectories, trajectory_length, policy):
         """
@@ -205,44 +235,40 @@ class Gridworld(object):
         rewards = np.array(rewards)
 
         # Add up all the rewards to find the total reward.
-        total_reward = rewards.sum(axis=1)
+        total_reward = np.sum(rewards, axis=1)
 
         # Return the average reward and standard deviation.
-        return total_reward.mean(), total_reward.std()
+        return np.mean(total_reward), np.std(total_reward)
 
-    def optimal_policy(self, state_int):
-        """
-        The optimal policy for this gridworld.
+    def generate_all_trajectories(self, n_states, trajectory_length):
 
-        state_int: What state we are in. int.
-        -> Action int.
-        """
+        trajectories = {}
+        for i in range(n_states):
+            print(f"{len(trajectories)} trajs")
+            state_int = i
+            trajectory = []
+            for _ in range(trajectory_length):
+                if state_int not in trajectories:
+                    action = self.actions[self.policy[state_int]]
+                    sx, sy = self.int_to_point(state_int)
+                    if (0 <= sx + action[0] < self.grid_size and
+                            0 <= sy + action[1] < self.grid_size):
+                        next_sx = sx + action[0]
+                        next_sy = sy + action[1]
+                    else:
+                        next_sx = sx
+                        next_sy = sy
+                    action_int = self.actions.index(action)
+                    trajectory.append((state_int, action_int))
+                    state_int = self.point_to_int((next_sx, next_sy))
+                else:
+                    trajectory += trajectories[state_int][:trajectory_length-len(trajectory)]
+                    break
+            trajectories[i] = trajectory
+           
+        return trajectories
 
-        sx, sy = self.int_to_point(state_int)
-
-        if sx < self.grid_size and sy < self.grid_size:
-            return rn.randint(0, 2)
-        if sx < self.grid_size-1:
-            return 0
-        if sy < self.grid_size-1:
-            return 1
-        raise ValueError("Unexpected state.")
-
-    def optimal_policy_deterministic(self, state_int):
-        """
-        Deterministic version of the optimal policy for this gridworld.
-
-        state_int: What state we are in. int.
-        -> Action int.
-        """
-
-        sx, sy = self.int_to_point(state_int)
-        if sx < sy:
-            return 0
-        return 1
-
-    def generate_trajectories(self, n_trajectories, trajectory_length, policy,
-                                    random_start=False):
+    def generate_trajectories(self, n_states, trajectory_length):
         """
         Generate n_trajectories trajectories with length trajectory_length,
         following the given policy.
@@ -253,22 +279,24 @@ class Gridworld(object):
         random_start: Whether to start randomly (default False). bool.
         -> [[(state int, action int, reward float)]]
         """
-
         trajectories = []
-        for _ in range(n_trajectories):
-            if random_start:
-                sx, sy = rn.randint(self.grid_size), rn.randint(self.grid_size)
-            else:
-                sx, sy = 0, 0
+        state_occupancy_list = []
 
+        # edges_list = np.hstack([np.arange(self.grid_size), np.arange(self.n_states-self.grid_size, self.n_states), np.arange(self.grid_size, self.n_states-self.grid_size, self.grid_size), np.arange(self.grid_size*2-1, self.n_states-self.grid_size, self.grid_size)])
+        # init_states = rn.choice(edges_list, len(edges_list), replace=False)
+
+        init_states = rn.choice(np.arange(n_states), 100, replace=False)
+        print("init states", init_states[:10])
+
+        # collect at most 80 trajectories
+        for i in range(100):
+            print(f"{len(trajectories)} trajs")
+            state_int = init_states[i]
             trajectory = []
+            state_coverage = np.zeros(n_states)
             for _ in range(trajectory_length):
-                if rn.random() < self.wind:
-                    action = self.actions[rn.randint(0, 4)]
-                else:
-                    # Follow the given policy.
-                    action = self.actions[policy(self.point_to_int((sx, sy)))]
-
+                action = self.actions[self.policy[state_int]]
+                sx, sy = self.int_to_point(state_int)
                 if (0 <= sx + action[0] < self.grid_size and
                         0 <= sy + action[1] < self.grid_size):
                     next_sx = sx + action[0]
@@ -276,16 +304,100 @@ class Gridworld(object):
                 else:
                     next_sx = sx
                     next_sy = sy
-
-                state_int = self.point_to_int((sx, sy))
                 action_int = self.actions.index(action)
-                next_state_int = self.point_to_int((next_sx, next_sy))
-                reward = self.reward(next_state_int)
-                trajectory.append((state_int, action_int, reward))
+                trajectory.append((state_int, action_int))
+                state_coverage[state_int] = 1
+                state_int = self.point_to_int((next_sx, next_sy))
 
-                sx = next_sx
-                sy = next_sy
-
+            num_covered = np.sum(state_coverage)
+            state_occupancy_list.append(num_covered)
             trajectories.append(trajectory)
+           
+        return trajectories, state_occupancy_list
 
-        return np.array(trajectories)
+    def generate_expert_demonstrations(self, m_expert, cross_validate_ratio=None):
+        """
+        Generate the expert demonstrations of n states
+        following the given policy.
+        policy: Map from state integers to action integers.
+        random_start: Whether to start randomly (default False). bool.
+        -> [[(state int, action int, reward float)]]
+        """
+        
+        rn.seed(self.seed)
+        states_itr = iter(rn.choice(range(self.n_states), self.n_states, replace=False))
+
+        expert_demo = []
+        # state_int = 90
+
+        if cross_validate_ratio is None:
+            m_training = m_expert
+            m_validate = 0
+        else:
+            m_training = int(m_expert*cross_validate_ratio)
+            m_validate = m_expert - m_training
+
+
+        while len(expert_demo) < m_training:
+            state_int = next(states_itr)
+            while state_int not in expert_demo and len(expert_demo) < m_training:
+                expert_demo.append(state_int)
+                action = self.actions[self.policy[state_int]]
+                sx, sy = self.int_to_point(state_int)
+                if (0 <= sx + action[0] < self.grid_size and
+                        0 <= sy + action[1] < self.grid_size):
+                    next_sx = sx + action[0]
+                    next_sy = sy + action[1]
+                else:
+                    next_sx = sx
+                    next_sy = sy
+                state_int = self.point_to_int((next_sx, next_sy))
+
+        val_start_idx = len(expert_demo)
+
+        while len(expert_demo) < val_start_idx + m_validate and len(expert_demo) <= self.n_states:
+            state_int = next(states_itr)
+            while state_int not in expert_demo:
+                expert_demo.append(state_int)
+                action = self.actions[self.policy[state_int]]
+                sx, sy = self.int_to_point(state_int)
+                if (0 <= sx + action[0] < self.grid_size and
+                        0 <= sy + action[1] < self.grid_size):
+                    next_sx = sx + action[0]
+                    next_sy = sy + action[1]
+                else:
+                    next_sx = sx
+                    next_sy = sy
+                state_int = self.point_to_int((next_sx, next_sy))
+
+        if cross_validate_ratio is None:
+            return np.sort(expert_demo[:m_expert]).reshape(m_expert)
+        else:
+            
+            training = np.sort(expert_demo[:m_training]).reshape(m_training)
+            validate = np.sort(expert_demo[len(expert_demo)-m_validate:]).reshape(m_validate)
+            expert = np.sort(expert_demo[:m_training] + expert_demo[len(expert_demo)-m_validate:]).reshape(m_expert)
+            return expert, training, validate
+
+    def evaluate_learnt_reward(self, reward, discount, n_states=None, n_actions=None, transition_prob=None):
+
+        if n_states is None:
+            n_states, n_actions, transition_prob  = self.n_states, self.n_actions, self.transition_probability
+
+        value = optimal_value(n_states,
+                              n_actions,
+                              transition_prob,
+                              reward,
+                              discount)
+
+        policy, rep = find_policy(n_states, n_actions, transition_prob, reward, discount, threshold=1e-2, v=value, stochastic=False)
+
+        return value, policy
+
+
+
+
+
+
+
+

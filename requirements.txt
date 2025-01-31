@@ -1,0 +1,11 @@
+numpy
+scipy
+cvxopt
+matplotlib
+jax[cuda12]
+tqdm
+theano
+seaborn
+pandas
+jupyter
+ipykernel

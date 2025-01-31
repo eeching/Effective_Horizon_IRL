@@ -1,10 +1,245 @@
-# Inverse Reinforcement Learning
+# On the Effective Horizon of Inverse Reinforcement Learning
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.555999.svg)](https://doi.org/10.5281/zenodo.555999)
+This repository contains the source code for experiments investigating the **Effective Horizon** in Inverse Reinforcement Learning (IRL). In our [accompanying paper](https://arxiv.org/abs/2307.06541), we show that the effective horizon governs policy complexity in IRL. In practice, choosing a smaller horizon (or equivalently, a larger discount factor) than the ground truth can mitigate overfitting—particularly when expert demonstration data is scarce.
 
-Implements selected inverse reinforcement learning (IRL) algorithms as part of COMP3710, supervised by Dr Mayank Daswani and Dr Marcus Hutter. My final report is available [here](https://alger.au/pdfs/irl.pdf) and describes the implemented algorithms.
+## Overview
 
-If you use this code in your work, you can cite it as follows:
+To test this claim, we:
+
+1. **Implemented four task environments:**
+   - Two variants of *Gridworld* (simple and hard).
+   - Two variants of *Objectworld* (linear and non-linear).
+2. **Adapted two classical IRL algorithms**—Linear-Programming IRL and Maximum Entropy IRL—to handle:
+   - Partial expert demonstrations.
+   - Variable horizon (or discount) settings.
+3. **Optimized the computation** by implementing these methods in JAX, allowing us to quickly iterate over discount/horizon values to find an optimal choice.
+
+---
+
+## Installation
+
+All dependencies are listed in **`requirements.txt`**. To install them, run:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Usage
+
+We provide four environment families:
+
+- `gridworld-simple`
+- `gridworld-hard`
+- `objectworld-linear`
+- `objectworld-non_linear`
+
+For each environment, we sweep over a range of discount factors (or horizons) and evaluate the resulting policy to determine the effective horizon. We support three run modes:
+
+1. **`single`**: Evaluate a single MDP.
+2. **`batch`**: Evaluate a batch of N MDPs with **oracle** error counts.
+3. **`cross`**: Evaluate a batch of N MDPs with **cross-validation** error counts.
+
+### Running Linear-Programming IRL
+
+To run Linear-Programming IRL for these modes, use:
+
+```bash
+# Single MDP over 60 gammas
+python effective_horizon_lp.py -t gridworld-simple -m single -n 60 -N 1
+
+# Batch of 10 MDPs with oracle error over 60 gammas
+python effective_horizon_lp.py -t gridworld-simple -m batch -n 60 -N 10
+
+# Batch of 10 MDPs with cross-validation over 60 gammas
+python effective_horizon_lp.py -t gridworld-simple -m cross -n 60 -N 10
+```
+
+### Running Maximum-Entropy IRL
+
+Similarly, for Maximum-Entropy IRL:
+
+```bash
+# Single MDP over 17 different horizons
+python effective_horizon_maxent.py -t gridworld-simple -m single -n 17 -N 1
+
+# Batch of 10 MDPs with oracle error over 17 different horizons
+python effective_horizon_maxent.py -t gridworld-simple -m batch -n 17 -N 10
+
+# Batch of 10 MDPs with cross-validation over 17 different horizons
+python effective_horizon_maxent.py -t gridworld-simple -m cross -n 17 -N 10
+```
+
+### Demo Notebook
+For a quick start and example usage, see the 
+[demo notebook](./demo_notebook.ipynb).
+
+It demonstrates:
+
+- Creating a simple Gridworld environment.
+- Generating partial expert demonstrations.
+- Running both Linear Programming IRL and Maximum Entropy IRL.
+- Visualizing the learned reward functions.
+
+### Output and Plotting
+
+- All results (reward functions, value functions, policies, error curves, etc.) are saved under:
+  ```
+  ./output/{env}/{method}/{mode}
+  ```
+- Plots of the error or performance vs. gamma/horizon values are also generated and stored in the same directory.
+- Additional plotting and analysis utilities are available in `irl/utils.py`.
+
+You can generate summary plots across tasks using:
+- `run_detailed_plots()` to produce per-task plots.
+- `run_submission_summary_plots()` for the style used in our AAMAS submission.
+
+Plots are saved in the `./plots` directory.
+
+---
+
+
+
+## Environments
+
+### Gridworld
+
+A Gridworld environment is defined on an N × N grid with randomly sampled goal states. By default, rewards are sparse (goal states have positive reward; others have zero).
+
+**Key Attributes**  
+- **`Gridworld(grid_size, reward_model, seed)`**  
+  - `grid_size`: Integer size of the grid.  
+  - `reward_model`: Either `"simple"` or `"hard"`, indicating the difficulty or complexity of the reward layout.  
+  - `seed`: Random seed for reproducibility.
+
+**Methods**  
+- **`get_optimal_policy()`**  
+  Returns the optimal action for each state.
+- **`get_optimal_value()`**  
+  Returns the optimal value for each state.
+- **`generate_expert_demonstrations(m_expert, cross_validate_ratio)`**  
+  Samples `m_expert` optimal state-action pairs and splits them into training/validation sets by `cross_validate_ratio`.
+- **`generate_all_trajectories(n_states, trajectory_length)`**  
+  Generates `n_states` trajectories of length `trajectory_length` from randomly chosen initial states under the optimal policy.
+- **`evaluate_learnt_reward(reward, discount)`**  
+  Given a reward function and discount factor, computes the policy and value function and returns performance metrics.
+
+**Example Usage**:
+
+```python
+from irl.mdp.gridworld import Gridworld
+
+world = Gridworld(grid_size=10, reward_model="simple", seed=0)
+
+n_trajectories, trajectory_length = 10, 20
+trajectories = world.generate_all_trajectories(
+    n_trajectories,
+    trajectory_length
+)
+```
+
+---
+
+### Objectworld
+
+Objectworld is a variant of Gridworld with 10 randomly placed objects, each having an *inner color* and an *outer color*. The reward function can be linear or non-linear combinations of these object attributes.
+
+**Key Attributes**  
+- **`Objectworld(grid_size, reward_model, seed)`**  
+  - `grid_size`: Grid size.
+  - `reward_model`: `"linear"` or `"non_linear"`.
+  - `seed`: Random seed.
+
+**Example Usage**:
+
+```python
+from irl.mdp.objectworld import Objectworld
+
+world = Objectworld(grid_size=10, reward_model="non_linear", seed=0)
+trajectories = world.generate_all_trajectories(
+    n_trajectories=10,
+    trajectory_length=20,
+)
+```
+
+---
+
+## IRL Methods
+
+### Linear-Programming IRL
+
+We adapt the Linear-Programming IRL approach from **Ng & Russell (2000)** to:
+
+1. Handle partial expert demonstrations (sample-based transition estimation).  
+2. Treat discount factor as a variable.  
+3. Remove L1 regularization to avoid reward confounding.  
+4. Use stricter constraints to ensure a unique optimal policy.
+
+**Example**:
+
+```python
+from effective_horizon_lp import lp_env_init, lp_irl
+
+# Initialize environment and load partial demonstrations
+world_env, ground_r, expert_policy, expert_demonstrated_states = lp_env_init(
+    task="gridworld",
+    expert_fraction=0.5,  # 50% of expert data
+    seed=42,
+    reward_model="simple"
+)
+
+training_discount = 0.5  # Example discount factor
+
+estimate_r, learned_v, learned_policy = lp_irl(
+    world_env,
+    expert_demonstrated_states,
+    training_discount,
+    slack_variable=0.001
+)
+```
+
+---
+
+### Maximum Entropy IRL
+
+We implement **Maximum Entropy IRL (Ziebart et al., 2008)** with modifications for partial demonstrations and variable horizons (by slicing or truncating trajectories).
+
+**Example**:
+
+```python
+from effective_horizon_maxent import load_maxent_expert, maxent_irl
+import numpy.random as rn
+import numpy as np
+
+# Load environment, expert transitions, etc.
+transition_fn, _, _, trajs, feature_matrix, n_actions, n_states, _ = load_maxent_expert(
+    task_env="gridworld", 
+    mode="single", 
+    reward_model="simple"
+)
+
+# Train with a finite horizon
+training_horizon = 10
+
+# extract training traj with N randomly sample initial states and truncate the trajectories at the given training horizon
+init_states = rn.choice(range(100), 10, replace=False)
+training_trajs = np.array([trajs[i] for i in init_states])[:, :training_horizon]
+
+estimate_r, learned_v, policy = maxent_irl(
+    feature_matrix, 
+    n_states, 
+    n_actions, 
+    transition_fn,
+    training_trajs,
+    epochs=200, 
+    learning_rate=0.01, 
+    finite_horizon=training_horizon
+)
+```
+
+This code is adapted from [MatthewJA/Inverse-Reinforcement-Learning](https://github.com/MatthewJA/Inverse-Reinforcement-Learning):
+
 ```bibtex
 @misc{alger16,
   author       = {Matthew Alger},
@@ -15,121 +250,21 @@ If you use this code in your work, you can cite it as follows:
 }
 ```
 
-## Algorithms implemented
+---
 
-- Linear programming IRL. From Ng & Russell, 2000. Small state space and large state space linear programming IRL.
-- Maximum entropy IRL. From Ziebart et al., 2008.
-- Deep maximum entropy IRL. From Wulfmeier et al., 2015; original derivation.
+## Citation
 
-Additionally, the following MDP domains are implemented:
-- Gridworld (Sutton, 1998)
-- Objectworld (Levine et al., 2011)
+If you find this repository useful in your research, please cite our work:
 
-## Requirements
-- NumPy
-- SciPy
-- CVXOPT
-- Theano
-- MatPlotLib (for examples)
+```bibtex
+@inproceedings{xu2025effective,
+  title={On the Effective Horizon of Inverse Reinforcement Learning},
+  author={Xu, Yiqing and Doshi-Velez, Finale and Hsu, David},
+  booktitle={International Conference on Autonomous Agents and Multiagent Systems},
+  year={2025}
+}
+```
 
-## Module documentation
+---
 
-Following is a brief list of functions and classes exported by modules. Full documentation is included in the docstrings of each function or class; only functions and classes intended for use outside the module are documented here.
-
-### linear_irl
-
-Implements linear programming inverse reinforcement learning (Ng & Russell, 2000).
-
-**Functions:**
-
-- `irl(n_states, n_actions, transition_probability, policy, discount, Rmax, l1)`: Find a reward function with inverse RL.
-- `large_inverseRL(value, transition_probability, feature_matrix, n_states, n_actions, policy)`: Find the reward in a large state space.
-
-### maxent
-    
-Implements maximum entropy inverse reinforcement learning (Ziebart et al., 2008).
-
-**Functions:**
-
-- `irl(feature_matrix, n_actions, discount, transition_probability, trajectories, epochs, learning_rate)`: Find the reward function for the given trajectories.
-- `find_svf(feature_matrix, n_actions, discount, transition_probability, trajectories, epochs, learning_rate)`: Find the state visitation frequency from trajectories.
-- `find_feature_expectations(feature_matrix, trajectories)`:  Find the feature expectations for the given trajectories. This is the average path feature vector.
-- `find_expected_svf(n_states, r, n_actions, discount, transition_probability, trajectories)`: Find the expected state visitation frequencies using algorithm 1 from Ziebart et al. 2008.
-- `expected_value_difference(n_states, n_actions, transition_probability, reward, discount, p_start_state, optimal_value, true_reward)`: Calculate the expected value difference, which is a proxy to how good a recovered reward function is.
-
-### deep_maxent
-
-Implements deep maximum entropy inverse reinforcement learning based on Ziebart et al., 2008 and Wulfmeier et al., 2015, using symbolic methods with Theano.
-
-**Functions:**
-
-- `irl(structure, feature_matrix, n_actions, discount, transition_probability, trajectories, epochs, learning_rate, initialisation="normal", l1=0.1, l2=0.1)`: Find the reward function for the given trajectories.
-- `find_svf(n_states, trajectories)`: Find the state vistiation frequency from trajectories.
-- `find_expected_svf(n_states, r, n_actions, discount, transition_probability, trajectories)`: Find the expected state visitation frequencies using algorithm 1 from Ziebart et al. 2008.
-
-### value_iteration
-
-Find the value function associated with a policy. Based on Sutton & Barto, 1998.
-
-**Functions:**
-
-- `value(policy, n_states, transition_probabilities, reward, discount, threshold=1e-2)`: Find the value function associated with a policy.
-- `optimal_value(n_states, n_actions, transition_probabilities, reward, discount, threshold=1e-2)`: Find the optimal value function.
-- `find_policy(n_states, n_actions, transition_probabilities, reward, discount, threshold=1e-2, v=None, stochastic=True)`: Find the optimal policy.
-
-### mdp
-
-#### gridworld
-
-Implements the gridworld MDP.
-
-**Classes, instance attributes, methods:**
-
-- `Gridworld(grid_size, wind, discount)`: Gridworld MDP.
-    - `actions`: Tuple of (dx, dy) actions.
-    - `n_actions`: Number of actions. int.
-    - `n_states`: Number of states. int.
-    - `grid_size`: Size of grid. int.
-    - `wind`: Chance of moving randomly. float.
-    - `discount`: MDP discount factor. float.
-    - `transition_probability`: NumPy array with shape (n_states, n_actions, n_states) where `transition_probability[si, a, sk]` is the probability of transitioning from state si to state sk under action a.
-    - `feature_vector(i, feature_map="ident")`: Get the feature vector associated with a state integer.
-    - `feature_matrix(feature_map="ident")`: Get the feature matrix for this gridworld.
-    - `int_to_point(i)`: Convert a state int into the corresponding coordinate.
-    - `point_to_int(p)`: Convert a coordinate into the corresponding state int.
-    - `neighbouring(i, k)`: Get whether two points neighbour each other. Also returns true if they are the same point.
-    - `reward(state_int)`: Reward for being in state state_int.
-    - `average_reward(n_trajectories, trajectory_length, policy)`: Calculate the average total reward obtained by following a given policy over n_paths paths.
-    - `optimal_policy(state_int)`: The optimal policy for this gridworld.
-    - `optimal_policy_deterministic(state_int)`: Deterministic version of the optimal policy for this gridworld.
-    - `generate_trajectories(n_trajectories, trajectory_length, policy, random_start=False)`: Generate n_trajectories trajectories with length trajectory_length, following the given policy.
-
-#### objectworld
-
-Implements the objectworld MDP described in Levine et al. 2011.
-
-**Classes, instance attributes, methods:**
-
-- `OWObject(inner_colour, outer_colour)`: Object in objectworld.
-    - `inner_colour`: Inner colour of object. int.
-    - `outer_colour`: Outer colour of object. int.
-
-- `Objectworld(grid_size, n_objects, n_colours, wind, discount)`: Objectworld MDP.
-    - `actions`: Tuple of (dx, dy) actions.
-    - `n_actions`: Number of actions. int.
-    - `n_states`: Number of states. int.
-    - `grid_size`: Size of grid. int.
-    - `n_objects`: Number of objects in the world. int.
-    - `n_colours`: Number of colours to colour objects with. int.
-    - `wind`: Chance of moving randomly. float.
-    - `discount`: MDP discount factor. float.
-    - `objects`: Set of objects in the world.
-    - `transition_probability`: NumPy array with shape (n_states, n_actions, n_states) where `transition_probability[si, a, sk]` is the probability of transitioning from state si to state sk under action a.
-    - `feature_vector(i, discrete=True)`: Get the feature vector associated with a state integer.
-    - `feature_matrix(discrete=True)`: Get the feature matrix for this gridworld.
-    - `int_to_point(i)`: Convert a state int into the corresponding coordinate.
-    - `point_to_int(p)`: Convert a coordinate into the corresponding state int.
-    - `neighbouring(i, k)`: Get whether two points neighbour each other. Also returns true if they are the same point.
-    - `reward(state_int)`: Reward for being in state state_int.
-    - `average_reward(n_trajectories, trajectory_length, policy)`: Calculate the average total reward obtained by following a given policy over n_paths paths.
-    - `generate_trajectories(n_trajectories, trajectory_length, policy)`: Generate n_trajectories trajectories with length trajectory_length, following the given policy.
+Feel free to open issues or pull requests if you encounter any problems or have suggestions!

@@ -1,17 +1,14 @@
-"""
-Implements the objectworld MDP described in Levine et al. 2011.
-
-Matthew Alger, 2015
-matthew.alger@anu.edu.au
-"""
-
 import math
 from itertools import product
 
 import numpy as np
 import numpy.random as rn
-
+import irl.value_iteration_jax as value_iteration
 from .gridworld import Gridworld
+from jax import jit
+from jax import random
+from functools import partial
+import pdb
 
 class OWObject(object):
     """
@@ -43,44 +40,51 @@ class Objectworld(Gridworld):
     Objectworld MDP.
     """
 
-    def __init__(self, grid_size, n_objects, n_colours, wind, discount):
+    def __init__(self, wind=0.1, discount=0.99, grid_size=10, V=True, demo=False, seed=None, T=None, reward_model=None, finite_horizon=None):
         """
-        grid_size: Grid size. int.
+
         n_objects: Number of objects in the world. int.
         n_colours: Number of colours to colour objects with. int.
         wind: Chance of moving randomly. float.
         discount: MDP discount. float.
         -> Objectworld
         """
+        super().__init__(wind=wind, grid_size=10, discount=discount, demo=demo, seed=seed, T=T, reward_model=reward_model, finite_horizon=finite_horizon, objectworld=True)
 
-        super().__init__(grid_size, wind, discount)
-
-        self.actions = ((1, 0), (0, 1), (-1, 0), (0, -1), (0, 0))
-        self.n_actions = len(self.actions)
-        self.n_objects = n_objects
-        self.n_colours = n_colours
+        self.n_objects = 10
+        self.n_colours = 2
+        self.reward_model = reward_model
 
         # Generate objects.
         self.objects = {}
         for _ in range(self.n_objects):
-            obj = OWObject(rn.randint(self.n_colours),
-                           rn.randint(self.n_colours))
+            obj = OWObject(self.rn.randint(self.n_colours),
+                           self.rn.randint(self.n_colours))
 
             while True:
-                x = rn.randint(self.grid_size)
-                y = rn.randint(self.grid_size)
+                x = self.rn.randint(self.grid_size)
+                y = self.rn.randint(self.grid_size)
 
                 if (x, y) not in self.objects:
                     break
 
             self.objects[x, y] = obj
 
-        # Preconstruct the transition probability array.
-        self.transition_probability = np.array(
-            [[[self._transition_probability(i, j, k)
-               for k in range(self.n_states)]
-              for j in range(self.n_actions)]
-             for i in range(self.n_states)])
+        self.reward_array = self.get_reward_array()
+
+        if V:
+            self.opt_v = value_iteration.optimal_value(self.n_states,
+                                       self.n_actions,
+                                       self.transition_probability,
+                                       self.reward_array,
+                                       self.discount,
+                                       T=self.finite_horizon)
+
+            print("finished computing V-value")
+            self.policy, rep = value_iteration.find_policy(self.n_states, self.n_actions, self.transition_probability,
+                                      self.reward_array, self.discount, self.opt_v, threshold=1e-2, stochastic=False, T=self.finite_horizon)
+                
+            print("finished computing the expert policy")
 
     def feature_vector(self, i, discrete=True):
         """
@@ -120,6 +124,18 @@ class Objectworld(Gridworld):
             if c not in nearest_outer:
                 nearest_outer[c] = 0
 
+        if self.reward_model == "multiple":
+            state = np.zeros((self.n_colours*self.grid_size,))
+            i = 0
+            for c in range(self.n_colours):
+                for d in range(1, self.grid_size+1):
+                    if nearest_inner[c] < d:
+                        state[i] = 1
+                    i += 1
+            assert i == self.n_colours*self.grid_size
+            assert (state >= 0).all()
+            return state
+
         if discrete:
             state = np.zeros((2*self.n_colours*self.grid_size,))
             i = 0
@@ -153,7 +169,7 @@ class Objectworld(Gridworld):
             bool.
         -> NumPy array with shape (n_states, n_states).
         """
-
+        
         return np.array([self.feature_vector(i, discrete)
                          for i in range(self.n_states)])
 
@@ -169,40 +185,46 @@ class Objectworld(Gridworld):
 
         near_c0 = False
         near_c1 = False
-        for (dx, dy) in product(range(-3, 4), range(-3, 4)):
-            if 0 <= x + dx < self.grid_size and 0 <= y + dy < self.grid_size:
-                if (abs(dx) + abs(dy) <= 3 and
-                        (x+dx, y+dy) in self.objects and
-                        self.objects[x+dx, y+dy].outer_colour == 0):
+
+        if (x, y) in self.objects and self.objects[x, y].outer_colour == 0:
                     near_c0 = True
-                if (abs(dx) + abs(dy) <= 2 and
-                        (x+dx, y+dy) in self.objects and
-                        self.objects[x+dx, y+dy].outer_colour == 1):
+        if (x, y) in self.objects and self.objects[x, y].outer_colour == 1:
                     near_c1 = True
 
-        if near_c0 and near_c1:
-            return 1
-        if near_c0:
-            return -1
-        return 0
+       
+        if self.reward_model == "linear":
+            if  near_c1:
+                return 3
+            if near_c0:
+                return 1
+            return 0
+        
+        elif self.reward_model == "non_linear":
 
-    def generate_trajectories(self, n_trajectories, trajectory_length, policy):
-        """
-        Generate n_trajectories trajectories with length trajectory_length.
+            near_c0 = False
+            near_c1 = False
+            for (dx, dy) in product(range(-3, 4), range(-3, 4)):
+                if 0 <= x + dx < self.grid_size and 0 <= y + dy < self.grid_size:
+                    if (abs(dx) + abs(dy) <= 3 and
+                        (x+dx, y+dy) in self.objects and
+                        self.objects[x+dx, y+dy].outer_colour == 0):
+                            near_c0 = True
+                    if (abs(dx) + abs(dy) <= 2 and
+                        (x+dx, y+dy) in self.objects and
+                        self.objects[x+dx, y+dy].outer_colour == 1):
+                            near_c1 = True
 
-        n_trajectories: Number of trajectories. int.
-        trajectory_length: Length of an episode. int.
-        policy: Map from state integers to action integers.
-        -> [[(state int, action int, reward float)]]
-        """
-
-        return super().generate_trajectories(n_trajectories, trajectory_length,
-                                             policy,
-                                             True)
-
-    def optimal_policy(self, state_int):
-        raise NotImplementedError(
-            "Optimal policy is not implemented for Objectworld.")
-    def optimal_policy_deterministic(self, state_int):
-        raise NotImplementedError(
-            "Optimal policy is not implemented for Objectworld.")
+            if near_c0 and near_c1:
+                return 1
+            if near_c0:
+                return -1
+            return 0
+        elif self.reward_model == "multiple":
+            if (x, y) in self.objects:
+                return self.objects[x, y].inner_colour
+            else:
+                return 0
+    
+    def get_reward_array(self):
+        return np.array([self.reward(s) for s in range(self.n_states)])
+            
