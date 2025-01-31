@@ -54,4 +54,5 @@ coverage.xml
 docs/_build/
 
 output/
+plots/
 
